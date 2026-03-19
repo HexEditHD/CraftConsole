@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CraftConsole.Modules.Issues.ViewModels"
+             xmlns:models="using:CraftConsole.Core.Models"
+             xmlns:converters="using:CraftConsole.Converters"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Class="CraftConsole.Modules.Issues.Views.IssuesView"
+             x:DataType="vm:IssuesViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="DataGrid">
+            <Setter Property="Background"             Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush"            Value="{DynamicResource SurfaceBorderBrush}"/>
+            <Setter Property="BorderThickness"        Value="1"/>
+            <Setter Property="CornerRadius"           Value="10"/>
+            <Setter Property="GridLinesVisibility"    Value="Horizontal"/>
+            <Setter Property="RowBackground"          Value="{DynamicResource SurfaceBrush}"/>
+        </Style>
+        <Style Selector="DataGridColumnHeader">
+            <Setter Property="Background"  Value="{DynamicResource HeaderBrush}"/>
+            <Setter Property="Foreground"  Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="FontSize"    Value="10"/>
+            <Setter Property="FontWeight"  Value="SemiBold"/>
+            <Setter Property="Padding"     Value="12,10"/>
+        </Style>
+        <Style Selector="DataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource AccentDimBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel>
+
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource HeaderBrush}"
+                BorderBrush="{DynamicResource SeparatorBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,14">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="Issues"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <Border CornerRadius="10"
+                            Background="{DynamicResource DangerDimBrush}"
+                            Padding="8,2"
+                            IsVisible="{Binding IssueCount, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding IssueCount}"
+                                   FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource DangerBrush}"/>
+                    </Border>
+                </StackPanel>
+                <Button Content="Clear"
+                        Command="{Binding ClearIssuesCommand}"
+                        DockPanel.Dock="Right"
+                        Padding="14,6"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Issues DataGrid -->
+        <DataGrid ItemsSource="{Binding Issues}"
+                  AutoGenerateColumns="False"
+                  CanUserReorderColumns="False"
+                  CanUserResizeColumns="True"
+                  CanUserSortColumns="True"
+                  x:CompileBindings="False">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="ID"
+                                    Binding="{Binding Id}"
+                                    Width="60"
+                                    IsReadOnly="True"/>
+                <DataGridTemplateColumn Header="Type" Width="100" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="models:IssueEntry">
+                            <Border CornerRadius="4"
+                                    Padding="8,3"
+                                    Margin="4,2"
+                                    Background="{Binding Type, Converter={StaticResource IssueTypeToBgConverter}}"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Type}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{Binding Type, Converter={StaticResource IssueTypeToFgConverter}}"/>
+                            </Border>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Timestamp"
+                                    Binding="{Binding Timestamp, StringFormat=\{0:HH:mm:ss\}}"
+                                    Width="90"
+                                    IsReadOnly="True"/>
+                <DataGridTextColumn Header="Message"
+                                    Binding="{Binding Message}"
+                                    Width="*"
+                                    IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+    </DockPanel>
+</UserControl>

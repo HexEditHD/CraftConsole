@@ -1,0 +1,261 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CraftConsole.Modules.Dashboard.ViewModels"
+             xmlns:models="using:CraftConsole.Core.Models"
+             xmlns:lvc="using:LiveChartsCore.SkiaSharpView.Avalonia"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="680"
+             x:Class="CraftConsole.Modules.Dashboard.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+
+    <UserControl.Styles>
+
+        <!-- Card -->
+        <Style Selector="Border.card">
+            <Setter Property="Background"      Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush"     Value="{DynamicResource SurfaceBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius"    Value="{DynamicResource CardRadius}"/>
+            <Setter Property="Padding"         Value="20"/>
+        </Style>
+
+        <!-- Metric label (CAPS, muted) -->
+        <Style Selector="TextBlock.metric-label">
+            <Setter Property="FontSize"     Value="10"/>
+            <Setter Property="FontWeight"   Value="SemiBold"/>
+            <Setter Property="Foreground"   Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="LetterSpacing" Value="1.2"/>
+        </Style>
+
+        <!-- Metric value (large bold) -->
+        <Style Selector="TextBlock.metric-value">
+            <Setter Property="FontSize"   Value="30"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- Metric unit (small, beside value) -->
+        <Style Selector="TextBlock.metric-unit">
+            <Setter Property="FontSize"           Value="13"/>
+            <Setter Property="Foreground"         Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="VerticalAlignment"  Value="Bottom"/>
+            <Setter Property="Margin"             Value="4,0,0,5"/>
+        </Style>
+
+        <!-- Section heading -->
+        <Style Selector="TextBlock.section-head">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+        </Style>
+
+    </UserControl.Styles>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" Margin="0,0,0,8">
+
+            <!-- ── Header ── -->
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                    <TextBlock Text="Dashboard"
+                               FontSize="22" FontWeight="Bold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    <TextBlock Text="{Binding ServerVersion, StringFormat='Minecraft {0}'}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}"/>
+                </StackPanel>
+
+                <!-- Status chip -->
+                <Border Grid.Column="1"
+                        CornerRadius="20" Padding="14,6"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource SurfaceBrush}"
+                        BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                        BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                 Fill="{DynamicResource TextMutedBrush}"/>
+                        <TextBlock Text="{Binding ServerStatusLabel}"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ── Machine section ── -->
+            <TextBlock Classes="section-head" Text="MACHINE"/>
+            <Grid ColumnDefinitions="*,*">
+                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="CPU USAGE"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding MachineCpuPercent, StringFormat='{}{0:F1}'}"/>
+                            <TextBlock Classes="metric-unit" Text="%"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding MachineCpuPercent}" Maximum="100"
+                                     Height="3" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource InfoBrush}"/>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="RAM USAGE"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding MachineRamUsedGb, StringFormat='{}{0:F1}'}"/>
+                            <TextBlock Classes="metric-unit"
+                                       Text="{Binding MachineRamTotalGb, StringFormat='/ {0:F1} GB'}"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding MachineRamPercent}" Maximum="100"
+                                     Height="3" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource WarnBrush}"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ── CraftConsole Process section ── -->
+            <TextBlock Classes="section-head" Text="CRAFTCONSOLE PROCESS"/>
+            <Grid ColumnDefinitions="*,*">
+                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="CPU USAGE"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding AppCpuPercent, StringFormat='{}{0:F1}'}"/>
+                            <TextBlock Classes="metric-unit" Text="%"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="1" Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="MEMORY"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding AppRamMb, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Classes="metric-unit" Text="MB"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ── Server section label ── -->
+            <TextBlock Classes="section-head" Text="SERVER"/>
+
+            <!-- ── Stat tiles (4 columns) ── -->
+            <Grid ColumnDefinitions="*,*,*,*">
+
+                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="PLAYERS ONLINE"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value" Text="{Binding PlayerCount}"/>
+                            <TextBlock Classes="metric-unit"
+                                       Text="{Binding MaxPlayers, StringFormat='/{0}'}"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding PlayerCount}"
+                                     Maximum="{Binding MaxPlayers}"
+                                     Height="3" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource AccentBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Classes="card" Margin="0,0,10,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="TICKS PER SECOND"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding Tps, StringFormat='{}{0:F1}'}"/>
+                            <TextBlock Classes="metric-unit" Text="/20"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding Tps}" Maximum="20"
+                                     Height="3" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource InfoBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Classes="card" Margin="0,0,10,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="MEMORY USED"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="metric-value"
+                                       Text="{Binding RamUsedMb, StringFormat='{}{0:F0}'}"/>
+                            <TextBlock Classes="metric-unit" Text="MB"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding RamPercent}" Maximum="100"
+                                     Height="3" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource WarnBrush}"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="3" Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="metric-label" Text="UPTIME"/>
+                        <TextBlock Classes="metric-value" Text="{Binding UptimeLabel}"/>
+                        <TextBlock Text="since last start" FontSize="11"
+                                   Foreground="{DynamicResource TextMutedBrush}"/>
+                    </StackPanel>
+                </Border>
+
+            </Grid>
+
+            <!-- ── Charts row ── -->
+            <Grid ColumnDefinitions="*,260">
+
+                <!-- TPS history -->
+                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
+                                    Spacing="10" Margin="0,0,0,14">
+                            <TextBlock Classes="section-head" Text="TPS HISTORY"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="60 samples"
+                                       FontSize="10"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Panel Height="150">
+                            <Rectangle Fill="{DynamicResource SurfaceBrush}"/>
+                            <lvc:CartesianChart Series="{Binding TpsSeries}"
+                                                XAxes="{Binding TpsXAxes}"
+                                                YAxes="{Binding TpsYAxes}"
+                                                Background="#0F1824"
+                                                TooltipPosition="Hidden"/>
+                        </Panel>
+                    </DockPanel>
+                </Border>
+
+                <!-- RAM donut -->
+                <Border Grid.Column="1" Classes="card">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top"
+                                   Classes="section-head" Text="MEMORY"
+                                   Margin="0,0,0,12"/>
+                        <Panel Height="150">
+                            <Rectangle Fill="{DynamicResource SurfaceBrush}"/>
+                            <lvc:PieChart Series="{Binding RamSeries}"
+                                          Background="#0F1824"
+                                          TooltipPosition="Hidden"
+                                          InitialRotation="-90"/>
+                            <!-- Overlay percentage -->
+                            <StackPanel HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding RamPercent, StringFormat='{}{0:F0}%'}"
+                                           FontSize="18" FontWeight="Bold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="used" FontSize="10"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Panel>
+                    </DockPanel>
+                </Border>
+
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
