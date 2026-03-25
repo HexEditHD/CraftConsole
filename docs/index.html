@@ -199,83 +199,130 @@
     .hero-preview {
       margin-top: 64px;
       position: relative; z-index: 1;
-      width: 100%; max-width: 860px;
+      width: 100%; max-width: 900px;
     }
     .preview-chrome {
-      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       box-shadow:
         0 0 0 1px rgba(34,211,238,.06),
-        0 40px 80px -20px rgba(0,0,0,.6),
-        0 0 60px -10px rgba(34,211,238,.08);
+        0 40px 80px -20px rgba(0,0,0,.7),
+        0 0 80px -10px rgba(34,211,238,.1);
+      font-size: 12px;
     }
-    .preview-titlebar {
-      height: 36px;
-      background: #060A10;
+    /* OS titlebar */
+    .pw-titlebar {
+      height: 32px; background: #040709;
+      display: flex; align-items: center; padding: 0 14px; gap: 7px;
+    }
+    .pw-dot { width: 9px; height: 9px; border-radius: 50%; }
+    .pw-title {
+      margin: 0 auto;
+      font-size: 10px; color: var(--text-muted); font-weight: 500;
+    }
+    /* App header */
+    .pw-header {
+      height: 44px; background: #060A10;
       border-bottom: 1px solid transparent;
-      border-image: linear-gradient(90deg, transparent, #5522D3EE 50%, transparent) 1;
-      display: flex; align-items: center;
-      padding: 0 16px;
-      gap: 8px;
+      border-image: linear-gradient(90deg, transparent, #8822D3EE 50%, transparent) 1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 18px;
     }
-    .preview-dot {
-      width: 10px; height: 10px; border-radius: 50%;
+    .pw-brand { display: flex; align-items: center; gap: 8px; }
+    .pw-brand-icon {
+      width: 20px; height: 20px; border-radius: 5px;
+      background: var(--accent-dim);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: var(--accent);
     }
-    .preview-titlebar-label {
-      margin-left: auto; margin-right: auto;
-      font-size: 11px; color: var(--text-muted); font-weight: 500;
+    .pw-brand-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+    .pw-chip {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 3px 10px;
     }
-    .preview-body {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 0;
+    .pw-chip-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.8s ease-in-out infinite alternate;
     }
-    .preview-card {
+    .pw-chip-label { font-size: 10px; color: var(--text-secondary); font-weight: 500; }
+    /* Page area */
+    .pw-page {
+      background: var(--bg);
+      padding: 18px 22px 14px;
+    }
+    /* Section accent bar */
+    .pw-section {
+      display: flex; align-items: center; gap: 7px;
+      margin: 12px 0 8px;
+    }
+    .pw-section-bar {
+      width: 2px; height: 10px; border-radius: 1px;
+      background: var(--accent);
+    }
+    .pw-section-label {
+      font-size: 9px; font-weight: 700;
+      color: var(--text-muted); letter-spacing: 1px;
+    }
+    /* Metric cards */
+    .pw-cards2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pw-cards3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .pw-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 20px;
-      margin: 12px 8px;
+      border-radius: 9px; padding: 14px;
     }
-    .preview-card:first-child { margin-left: 12px; }
-    .preview-card:last-child  { margin-right: 12px; }
-    .preview-card-label {
-      font-size: 9px; font-weight: 700;
-      color: var(--text-muted);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      margin-bottom: 10px;
+    .pw-card-glass {
+      background: linear-gradient(180deg, #141F30 0%, #0F1824 100%);
+      border: 1px solid var(--accent-dim);
+      border-top: 2px solid var(--accent-dim);
+      border-radius: 9px; padding: 14px;
+      box-shadow: 0 0 18px 3px rgba(34,211,238,.08);
     }
-    .preview-value {
-      font-size: 28px; font-weight: 800;
-      color: var(--accent);
-      line-height: 1;
+    .pw-metric-label {
+      font-size: 8px; font-weight: 700; letter-spacing: 1px;
+      color: var(--text-muted); text-transform: uppercase; margin-bottom: 7px;
     }
-    .preview-value span { font-size: 13px; color: var(--text-muted); font-weight: 400; }
-    .preview-bar-track {
+    .pw-metric-row { display: flex; align-items: baseline; gap: 3px; }
+    .pw-metric-val { font-size: 22px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+    .pw-metric-unit { font-size: 11px; color: var(--text-muted); }
+    .pw-bar-track {
       height: 3px; background: var(--surface-alt);
-      border-radius: 2px; margin-top: 12px; overflow: hidden;
+      border-radius: 2px; margin-top: 9px; overflow: hidden;
     }
-    .preview-bar-fill {
-      height: 100%; border-radius: 2px;
-    }
-
-    /* Arc gauge mock */
-    .arc-mock {
-      width: 80px; height: 80px;
-      margin: 8px auto 0;
-      position: relative;
-    }
-    .arc-mock svg { width: 100%; height: 100%; }
-    .arc-center {
+    .pw-bar-fill { height: 100%; border-radius: 2px; }
+    /* Arc gauge */
+    .pw-arc { width: 76px; height: 76px; position: relative; margin: 4px auto 0; }
+    .pw-arc svg { width: 100%; height: 100%; }
+    .pw-arc-center {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
     }
-    .arc-val { font-size: 17px; font-weight: 800; color: var(--text-primary); line-height: 1; }
-    .arc-unit { font-size: 8px; color: var(--text-muted); margin-top: 1px; }
+    .pw-arc-val { font-size: 15px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+    .pw-arc-unit { font-size: 7px; color: var(--text-muted); margin-top: 1px; }
+    /* Bottom nav */
+    .pw-nav {
+      background: #060A10;
+      border-top: 1px solid transparent;
+      border-image: linear-gradient(90deg, transparent, #8822D3EE 50%, transparent) 1;
+      display: flex;
+    }
+    .pw-tab {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; padding: 7px 0 7px;
+      gap: 2px; position: relative;
+    }
+    .pw-tab-line {
+      position: absolute; top: 0; left: 25%; right: 25%;
+      height: 2px; border-radius: 0 0 2px 2px;
+      background: var(--accent);
+      box-shadow: 0 3px 10px rgba(34,211,238,.5);
+    }
+    .pw-tab-icon { font-size: 13px; }
+    .pw-tab-label { font-size: 7px; font-weight: 600; letter-spacing: .3px; }
 
     /* ── Stats bar ── */
     .stats-bar {
@@ -436,7 +483,7 @@
     @media (max-width: 640px) {
       nav { padding: 0 20px; }
       .nav-links { display: none; }
-      .preview-body { grid-template-columns: 1fr; }
+      .pw-cards2, .pw-cards3 { grid-template-columns: 1fr; }
       .stats-bar { gap: 32px; }
       footer { flex-direction: column; text-align: center; }
     }
@@ -483,75 +530,157 @@
   <!-- App window mock -->
   <div class="hero-preview">
     <div class="preview-chrome">
-      <div class="preview-titlebar">
-        <div class="preview-dot" style="background:#F87171"></div>
-        <div class="preview-dot" style="background:#FB923C"></div>
-        <div class="preview-dot" style="background:#4ADE80"></div>
-        <span class="preview-titlebar-label">CraftConsole — Dashboard</span>
+
+      <!-- OS titlebar -->
+      <div class="pw-titlebar">
+        <div class="pw-dot" style="background:#F87171"></div>
+        <div class="pw-dot" style="background:#FB923C"></div>
+        <div class="pw-dot" style="background:#4ADE80"></div>
+        <span class="pw-title">CraftConsole</span>
       </div>
-      <div class="preview-body">
 
-        <!-- Players arc gauge mock -->
-        <div class="preview-card">
-          <div class="preview-card-label">Players Online</div>
-          <div class="arc-mock">
-            <svg viewBox="0 0 80 80">
-              <!-- track -->
-              <path d="M 13 62 A 27 27 0 1 1 67 62" fill="none" stroke="#162035" stroke-width="7" stroke-linecap="round"/>
-              <!-- fill ~40% -->
-              <path d="M 13 62 A 27 27 0 0 1 40 13" fill="none" stroke="url(#cyanGrad)" stroke-width="7" stroke-linecap="round"/>
-              <defs>
-                <linearGradient id="cyanGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="#22D3EE"/>
-                  <stop offset="1" stop-color="#67E8F9"/>
-                </linearGradient>
-              </defs>
-            </svg>
-            <div class="arc-center">
-              <div class="arc-val">3</div>
-              <div class="arc-unit">online</div>
-            </div>
-          </div>
-          <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:6px">max 20</div>
+      <!-- App header -->
+      <div class="pw-header">
+        <div class="pw-brand">
+          <div class="pw-brand-icon">M</div>
+          <span class="pw-brand-name">CraftConsole</span>
         </div>
-
-        <!-- Memory arc gauge mock -->
-        <div class="preview-card">
-          <div class="preview-card-label">Memory Used</div>
-          <div class="arc-mock">
-            <svg viewBox="0 0 80 80">
-              <path d="M 13 62 A 27 27 0 1 1 67 62" fill="none" stroke="#162035" stroke-width="7" stroke-linecap="round"/>
-              <!-- fill ~65% -->
-              <path d="M 13 62 A 27 27 0 1 1 66 38" fill="none" stroke="url(#orangeGrad)" stroke-width="7" stroke-linecap="round"/>
-              <defs>
-                <linearGradient id="orangeGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stop-color="#FB923C"/>
-                  <stop offset="1" stop-color="#FCD34D"/>
-                </linearGradient>
-              </defs>
-            </svg>
-            <div class="arc-center">
-              <div class="arc-val" style="color:#FB923C">1.4</div>
-              <div class="arc-unit">GB</div>
-            </div>
-          </div>
-          <div style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:6px">peak 2.1 GB</div>
+        <div class="pw-chip">
+          <div class="pw-chip-dot"></div>
+          <span class="pw-chip-label">Running</span>
         </div>
-
-        <!-- Uptime card -->
-        <div class="preview-card">
-          <div class="preview-card-label">Uptime</div>
-          <div class="preview-value" style="margin-top:18px;font-size:32px">3h 42m</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">since last start</div>
-          <div style="margin-top:20px">
-            <div style="font-size:9px;color:var(--text-muted);letter-spacing:.8px;margin-bottom:4px">CPU USAGE</div>
-            <div class="preview-bar-track">
-              <div class="preview-bar-fill" style="width:23%;background:linear-gradient(90deg,#60A5FA,#22D3EE)"></div>
-            </div>
-          </div>
-        </div>
-
       </div>
+
+      <!-- Dashboard page -->
+      <div class="pw-page">
+
+        <!-- Page heading -->
+        <div style="margin-bottom:4px">
+          <div style="font-size:16px;font-weight:800;color:var(--text-primary);line-height:1.2">Dashboard</div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Minecraft 1.21.4</div>
+        </div>
+
+        <!-- Machine section -->
+        <div class="pw-section">
+          <div class="pw-section-bar"></div>
+          <span class="pw-section-label">MACHINE</span>
+        </div>
+        <div class="pw-cards2">
+          <div class="pw-card">
+            <div class="pw-metric-label">CPU USAGE</div>
+            <div class="pw-metric-row">
+              <span class="pw-metric-val">23.4</span>
+              <span class="pw-metric-unit">%</span>
+            </div>
+            <div class="pw-bar-track">
+              <div class="pw-bar-fill" style="width:23%;background:linear-gradient(90deg,#60A5FA,#22D3EE)"></div>
+            </div>
+          </div>
+          <div class="pw-card">
+            <div class="pw-metric-label">RAM USAGE</div>
+            <div class="pw-metric-row">
+              <span class="pw-metric-val">6.2</span>
+              <span class="pw-metric-unit">/ 16 GB</span>
+            </div>
+            <div class="pw-bar-track">
+              <div class="pw-bar-fill" style="width:39%;background:linear-gradient(90deg,#FB923C,#FCD34D)"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Server section -->
+        <div class="pw-section">
+          <div class="pw-section-bar"></div>
+          <span class="pw-section-label">SERVER</span>
+        </div>
+        <div class="pw-cards3">
+
+          <!-- Players arc gauge — 3/20 = 15% -->
+          <div class="pw-card-glass">
+            <div class="pw-metric-label">PLAYERS ONLINE</div>
+            <div class="pw-arc">
+              <svg viewBox="0 0 100 100">
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#22D3EE"/>
+                    <stop offset="1" stop-color="#67E8F9"/>
+                  </linearGradient>
+                </defs>
+                <!-- track: 135° → 405° (=45°), r=38, cx=cy=50 -->
+                <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9"
+                      fill="none" stroke="#162035" stroke-width="8" stroke-linecap="round"/>
+                <!-- fill: 15% → sweep=40.5° → end=175.5° -->
+                <path d="M 23.1 76.9 A 38 38 0 0 1 12.2 53.0"
+                      fill="none" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
+              </svg>
+              <div class="pw-arc-center">
+                <div class="pw-arc-val" style="color:var(--accent)">3</div>
+                <div class="pw-arc-unit">online</div>
+              </div>
+            </div>
+            <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:5px">max 20</div>
+          </div>
+
+          <!-- Memory arc gauge — 65% -->
+          <div class="pw-card-glass">
+            <div class="pw-metric-label">MEMORY USED</div>
+            <div class="pw-arc">
+              <svg viewBox="0 0 100 100">
+                <defs>
+                  <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#FB923C"/>
+                    <stop offset="1" stop-color="#FCD34D"/>
+                  </linearGradient>
+                </defs>
+                <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9"
+                      fill="none" stroke="#162035" stroke-width="8" stroke-linecap="round"/>
+                <!-- fill: 65% → sweep=175.5° → end=310.5° -->
+                <path d="M 23.1 76.9 A 38 38 0 0 1 74.7 21.1"
+                      fill="none" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
+              </svg>
+              <div class="pw-arc-center">
+                <div class="pw-arc-val" style="color:#FB923C">1.4</div>
+                <div class="pw-arc-unit">GB</div>
+              </div>
+            </div>
+            <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:5px">peak 2.1 GB</div>
+          </div>
+
+          <!-- Uptime -->
+          <div class="pw-card-glass">
+            <div class="pw-metric-label">UPTIME</div>
+            <div style="font-size:22px;font-weight:800;color:var(--accent);margin-top:8px;line-height:1">3h 42m</div>
+            <div style="font-size:9px;color:var(--text-muted);margin-top:4px">since last start</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="pw-nav">
+        <div class="pw-tab">
+          <div class="pw-tab-line"></div>
+          <div class="pw-tab-icon" style="color:var(--accent)">⊞</div>
+          <div class="pw-tab-label" style="color:var(--accent)">Dashboard</div>
+        </div>
+        <div class="pw-tab">
+          <div class="pw-tab-icon" style="color:var(--text-muted)">▶_</div>
+          <div class="pw-tab-label" style="color:var(--text-muted)">Console</div>
+        </div>
+        <div class="pw-tab">
+          <div class="pw-tab-icon" style="color:var(--text-muted)">◎</div>
+          <div class="pw-tab-label" style="color:var(--text-muted)">Players</div>
+        </div>
+        <div class="pw-tab">
+          <div class="pw-tab-icon" style="color:var(--text-muted)">⬡</div>
+          <div class="pw-tab-label" style="color:var(--text-muted)">Server</div>
+        </div>
+        <div class="pw-tab">
+          <div class="pw-tab-icon" style="color:var(--text-muted)">≡</div>
+          <div class="pw-tab-label" style="color:var(--text-muted)">Editor</div>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
