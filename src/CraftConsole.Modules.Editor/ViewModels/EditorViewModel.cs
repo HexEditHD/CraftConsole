@@ -6,6 +6,8 @@ using CraftConsole.Modules.Editor.Models;
 
 namespace CraftConsole.Modules.Editor.ViewModels;
 
+public enum FileSortMode { Name, Size }
+
 public partial class EditorViewModel : ObservableObject
 {
     private static readonly HashSet<string> EditableExtensions =
@@ -17,6 +19,7 @@ public partial class EditorViewModel : ObservableObject
     public ObservableCollection<EditorTab> Tabs { get; } = [];
 
     [ObservableProperty] private EditorTab? _selectedTab;
+    [ObservableProperty] private FileSortMode _sortMode = FileSortMode.Name;
 
     /// <summary>Set by code-behind to show a confirm-close dialog for dirty tabs.</summary>
     public Func<EditorTab, Task<bool>>? ConfirmCloseAsync { get; set; }
@@ -27,18 +30,32 @@ public partial class EditorViewModel : ObservableObject
         LoadFileTree();
     }
 
+    [RelayCommand]
+    private void SortByName()
+    {
+        SortMode = FileSortMode.Name;
+        LoadFileTree();
+    }
+
+    [RelayCommand]
+    private void SortBySize()
+    {
+        SortMode = FileSortMode.Size;
+        LoadFileTree();
+    }
+
     private void LoadFileTree()
     {
         FileTree.Clear();
         if (_rootDirectory is null || !Directory.Exists(_rootDirectory)) return;
 
-        var root = BuildNode(_rootDirectory);
+        var root = BuildNode(_rootDirectory, SortMode);
         if (root is not null)
             foreach (var child in root.Children)
                 FileTree.Add(child);
     }
 
-    private static FileNode? BuildNode(string path)
+    private static FileNode? BuildNode(string path, FileSortMode sortMode)
     {
         if (File.Exists(path))
         {
@@ -49,6 +66,7 @@ public partial class EditorViewModel : ObservableObject
                 FullPath    = path,
                 Name        = Path.GetFileName(path),
                 IsDirectory = false,
+                Size        = new FileInfo(path).Length,
             };
         }
 
@@ -61,19 +79,26 @@ public partial class EditorViewModel : ObservableObject
             IsDirectory = true,
         };
 
-        // Files first, then subdirectories
+        // Collect children
+        var children = new List<FileNode>();
         foreach (var file in Directory.GetFiles(path))
         {
-            var child = BuildNode(file);
-            if (child is not null) node.Children.Add(child);
+            var child = BuildNode(file, sortMode);
+            if (child is not null) children.Add(child);
         }
         foreach (var dir in Directory.GetDirectories(path))
         {
-            var child = BuildNode(dir);
-            if (child is not null) node.Children.Add(child);
+            var child = BuildNode(dir, sortMode);
+            if (child is not null) children.Add(child);
         }
 
-        // Only include directories that have editable descendants
+        // Sort
+        IEnumerable<FileNode> sorted = sortMode == FileSortMode.Size
+            ? children.OrderByDescending(c => c.Size)
+            : children.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var c in sorted) node.Children.Add(c);
+
         return node.Children.Count > 0 ? node : null;
     }
 

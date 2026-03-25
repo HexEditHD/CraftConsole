@@ -19,7 +19,7 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override async void OnFrameworkInitializationCompleted()
+    public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -27,7 +27,7 @@ public partial class App : Application
 
             var appDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CraftConsole");
-            var settings = await AppSettings.LoadAsync(appDataPath);
+            var settings = AppSettings.Load(appDataPath);
             LevelToColorConverter.CurrentSettings = settings;
 
             desktop.MainWindow = new MainWindow

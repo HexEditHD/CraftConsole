@@ -15,11 +15,17 @@ public partial class PlayersViewModel : ObservableObject
     private readonly HttpClient _http = new();
     private readonly Dictionary<string, string> _geoCache = new();
 
+    // ── Online players ───────────────────────────────────────────────────
     public ObservableCollection<Player> Players { get; } = [];
-    public ObservableCollection<Player> BannedPlayers { get; } = [];
-
     [ObservableProperty] private Player? _selectedPlayer;
-    [ObservableProperty] private Player? _selectedBannedPlayer;
+
+    // ── Banned players (from banned-players.json) ────────────────────────
+    public ObservableCollection<BannedPlayerEntry> BannedPlayers { get; } = [];
+    [ObservableProperty] private BannedPlayerEntry? _selectedBannedPlayer;
+
+    // ── Banned IPs (from banned-ips.json) ────────────────────────────────
+    public ObservableCollection<BannedIpEntry> BannedIps { get; } = [];
+    [ObservableProperty] private BannedIpEntry? _selectedBannedIp;
 
     /// <summary>Wired by PlayersView.axaml.cs to show a reason input dialog.</summary>
     public Func<string, Task<string?>>? ShowReasonDialogAsync { get; set; }
@@ -38,7 +44,17 @@ public partial class PlayersViewModel : ObservableObject
                 switch (evt)
                 {
                     case PlayerJoinedEvent j:
-                        if (Players.Any(p => p.Username == j.Player.Username)) break;
+                        var existing = Players.FirstOrDefault(p => p.Username == j.Player.Username);
+                        if (existing is not null)
+                        {
+                            // "logged in" event may arrive after "joined the game" — patch IP if now known
+                            if (existing.IpAddress is null && j.Player.IpAddress is not null)
+                            {
+                                existing.IpAddress = j.Player.IpAddress;
+                                _ = ResolveLocationAsync(existing);
+                            }
+                            break;
+                        }
                         Players.Add(j.Player);
                         _ = ResolveLocationAsync(j.Player);
                         break;
@@ -54,6 +70,41 @@ public partial class PlayersViewModel : ObservableObject
                 }
             });
         });
+
+        _ = LoadBannedListsAsync(server.Profile.WorkingDirectory);
+    }
+
+    private async Task LoadBannedListsAsync(string workingDir)
+    {
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        await LoadJsonListAsync<BannedPlayerEntry>(
+            Path.Combine(workingDir, "banned-players.json"),
+            BannedPlayers, options);
+
+        await LoadJsonListAsync<BannedIpEntry>(
+            Path.Combine(workingDir, "banned-ips.json"),
+            BannedIps, options);
+    }
+
+    private static async Task LoadJsonListAsync<T>(
+        string path,
+        ObservableCollection<T> target,
+        JsonSerializerOptions options)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+            await using var fs = File.OpenRead(path);
+            var items = await JsonSerializer.DeserializeAsync<List<T>>(fs, options);
+            if (items is null) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                target.Clear();
+                foreach (var item in items) target.Add(item);
+            });
+        }
+        catch { /* file may be locked or malformed */ }
     }
 
     private async Task ResolveLocationAsync(Player player)
@@ -67,14 +118,15 @@ public partial class PlayersViewModel : ObservableObject
 
         try
         {
-            var url  = $"http://ip-api.com/json/{player.IpAddress}?fields=country,city";
+            var url  = $"https://ipinfo.io/{player.IpAddress}/json";
             var json = await _http.GetStringAsync(url);
             using var doc = JsonDocument.Parse(json);
             var root    = doc.RootElement;
             var city    = root.TryGetProperty("city",    out var c) ? c.GetString() : null;
+            var region  = root.TryGetProperty("region",  out var r) ? r.GetString() : null;
             var country = root.TryGetProperty("country", out var n) ? n.GetString() : null;
-            var location = string.IsNullOrEmpty(city) ? country : $"{city}, {country}";
-            _geoCache[player.IpAddress] = location ?? "—";
+            var parts   = new[] { city, region, country }.Where(s => !string.IsNullOrEmpty(s));
+            _geoCache[player.IpAddress] = string.Join(", ", parts) is { Length: > 0 } loc ? loc : "—";
             Avalonia.Threading.Dispatcher.UIThread.Post(() => player.Location = _geoCache[player.IpAddress]);
         }
         catch { /* ignore network errors */ }
@@ -104,9 +156,7 @@ public partial class PlayersViewModel : ObservableObject
             ? $"ban {SelectedPlayer.Username}"
             : $"ban {SelectedPlayer.Username} {reason}";
         await _server.SendCommandAsync(cmd);
-        var p = SelectedPlayer;
-        Players.Remove(p);
-        BannedPlayers.Add(p);
+        Players.Remove(SelectedPlayer);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedPlayer))]
@@ -120,39 +170,35 @@ public partial class PlayersViewModel : ObservableObject
             ? $"ban-ip {target}"
             : $"ban-ip {target} {reason}";
         await _server.SendCommandAsync(cmd);
-        var p = SelectedPlayer;
-        Players.Remove(p);
-        BannedPlayers.Add(p);
+        Players.Remove(SelectedPlayer);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelectedBannedPlayer))]
     private async Task PardonPlayerAsync()
     {
         if (_server is null || SelectedBannedPlayer is null) return;
-        await _server.SendCommandAsync($"pardon {SelectedBannedPlayer.Username}");
-        var p = SelectedBannedPlayer;
-        BannedPlayers.Remove(p);
+        await _server.SendCommandAsync($"pardon {SelectedBannedPlayer.Name}");
+        BannedPlayers.Remove(SelectedBannedPlayer);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelectedBannedPlayer))]
-    private async Task PardonPlayerIpAsync()
+    [RelayCommand(CanExecute = nameof(HasSelectedBannedIp))]
+    private async Task PardonIpAsync()
     {
-        if (_server is null || SelectedBannedPlayer is null) return;
-        var target = SelectedBannedPlayer.IpAddress ?? SelectedBannedPlayer.Username;
-        await _server.SendCommandAsync($"pardon-ip {target}");
-        var p = SelectedBannedPlayer;
-        BannedPlayers.Remove(p);
+        if (_server is null || SelectedBannedIp is null) return;
+        await _server.SendCommandAsync($"pardon-ip {SelectedBannedIp.Ip}");
+        BannedIps.Remove(SelectedBannedIp);
     }
 
     private async Task<string?> PromptReason(string prompt)
     {
         if (ShowReasonDialogAsync is not null)
             return await ShowReasonDialogAsync(prompt);
-        return string.Empty; // no dialog wired — proceed without reason
+        return string.Empty;
     }
 
-    private bool HasSelectedPlayer() => SelectedPlayer is not null;
+    private bool HasSelectedPlayer()      => SelectedPlayer is not null;
     private bool HasSelectedBannedPlayer() => SelectedBannedPlayer is not null;
+    private bool HasSelectedBannedIp()     => SelectedBannedIp is not null;
 
     partial void OnSelectedPlayerChanged(Player? value)
     {
@@ -161,9 +207,9 @@ public partial class PlayersViewModel : ObservableObject
         BanPlayerIpCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnSelectedBannedPlayerChanged(Player? value)
-    {
-        PardonPlayerCommand.NotifyCanExecuteChanged();
-        PardonPlayerIpCommand.NotifyCanExecuteChanged();
-    }
+    partial void OnSelectedBannedPlayerChanged(BannedPlayerEntry? value)
+        => PardonPlayerCommand.NotifyCanExecuteChanged();
+
+    partial void OnSelectedBannedIpChanged(BannedIpEntry? value)
+        => PardonIpCommand.NotifyCanExecuteChanged();
 }

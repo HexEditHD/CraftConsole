@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:CraftConsole.Modules.Dashboard.ViewModels"
+             xmlns:controls="using:CraftConsole.Modules.Dashboard.Controls"
              xmlns:models="using:CraftConsole.Core.Models"
-             xmlns:lvc="using:LiveChartsCore.SkiaSharpView.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="960" d:DesignHeight="680"
@@ -18,6 +18,17 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius"    Value="{DynamicResource CardRadius}"/>
             <Setter Property="Padding"         Value="20"/>
+            <Setter Property="BoxShadow"       Value="{DynamicResource CardShadow}"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.2"/>
+                    <BrushTransition      Property="BorderBrush" Duration="0:0:0.2"/>
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.card:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentDimBrush}"/>
+            <Setter Property="BoxShadow"   Value="{DynamicResource AccentGlow}"/>
         </Style>
 
         <!-- Metric label (CAPS, muted) -->
@@ -50,13 +61,38 @@
             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
         </Style>
 
+        <!-- Sub-stat label -->
+        <Style Selector="TextBlock.sub-label">
+            <Setter Property="FontSize"   Value="9"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="LetterSpacing" Value="0.8"/>
+        </Style>
+
+        <!-- Sub-stat value -->
+        <Style Selector="TextBlock.sub-value">
+            <Setter Property="FontSize"   Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        </Style>
+
+        <!-- Card menu button (···) -->
+        <Style Selector="Button.card-menu">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding"         Value="4,0"/>
+            <Setter Property="FontSize"        Value="14"/>
+            <Setter Property="Foreground"      Value="{DynamicResource TextMutedBrush}"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
     </UserControl.Styles>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16" Margin="0,0,0,8">
 
             <!-- ── Header ── -->
-            <Grid ColumnDefinitions="*,Auto">
+            <Grid>
                 <StackPanel Spacing="3">
                     <TextBlock Text="Dashboard"
                                FontSize="22" FontWeight="Bold"
@@ -66,43 +102,63 @@
                                Foreground="{DynamicResource TextMutedBrush}"/>
                 </StackPanel>
 
-                <!-- Status chip -->
-                <Border Grid.Column="1"
-                        CornerRadius="20" Padding="14,6"
-                        VerticalAlignment="Center"
-                        Background="{DynamicResource SurfaceBrush}"
-                        BorderBrush="{DynamicResource SurfaceBorderBrush}"
-                        BorderThickness="1">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Ellipse Width="7" Height="7" VerticalAlignment="Center"
-                                 Fill="{DynamicResource TextMutedBrush}"/>
-                        <TextBlock Text="{Binding ServerStatusLabel}"
-                                   FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
             </Grid>
 
             <!-- ── Machine section ── -->
-            <TextBlock Classes="section-head" Text="MACHINE"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <Border Width="2" Height="12" CornerRadius="1"
+                        Background="{DynamicResource AccentBrush}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Classes="section-head" Text="MACHINE" VerticalAlignment="Center"/>
+            </StackPanel>
             <Grid ColumnDefinitions="*,*">
+                <!-- Machine CPU card -->
                 <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="metric-label" Text="CPU USAGE"/>
+                        <!-- Card header -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="&#xE9D9;"
+                                       FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Classes="metric-label"
+                                       Text="CPU USAGE" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="card-menu" Content="···"/>
+                        </Grid>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Classes="metric-value"
                                        Text="{Binding MachineCpuPercent, StringFormat='{}{0:F1}'}"/>
                             <TextBlock Classes="metric-unit" Text="%"/>
                         </StackPanel>
                         <ProgressBar Value="{Binding MachineCpuPercent}" Maximum="100"
-                                     Height="3" Margin="0,2,0,0"
-                                     Foreground="{DynamicResource InfoBrush}"/>
+                                     Height="3" Margin="0,2,0,0">
+                            <ProgressBar.Foreground>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                                    <GradientStop Color="#60A5FA" Offset="0"/>
+                                    <GradientStop Color="#22D3EE" Offset="1"/>
+                                </LinearGradientBrush>
+                            </ProgressBar.Foreground>
+                        </ProgressBar>
                     </StackPanel>
                 </Border>
+
+                <!-- Machine RAM card -->
                 <Border Grid.Column="1" Classes="card">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="metric-label" Text="RAM USAGE"/>
+                        <!-- Card header -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="&#xE950;"
+                                       FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Classes="metric-label"
+                                       Text="RAM USAGE" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="card-menu" Content="···"/>
+                        </Grid>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Classes="metric-value"
                                        Text="{Binding MachineRamUsedGb, StringFormat='{}{0:F1}'}"/>
@@ -110,18 +166,58 @@
                                        Text="{Binding MachineRamTotalGb, StringFormat='/ {0:F1} GB'}"/>
                         </StackPanel>
                         <ProgressBar Value="{Binding MachineRamPercent}" Maximum="100"
-                                     Height="3" Margin="0,2,0,0"
-                                     Foreground="{DynamicResource WarnBrush}"/>
+                                     Height="3" Margin="0,2,0,0">
+                            <ProgressBar.Foreground>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                                    <GradientStop Color="#FB923C" Offset="0"/>
+                                    <GradientStop Color="#FCD34D" Offset="1"/>
+                                </LinearGradientBrush>
+                            </ProgressBar.Foreground>
+                        </ProgressBar>
+                        <!-- Secondary stats strip -->
+                        <Grid ColumnDefinitions="*,*,*" Margin="0,4,0,0">
+                            <StackPanel Grid.Column="0" Spacing="1">
+                                <TextBlock Classes="sub-label" Text="USED"/>
+                                <TextBlock Classes="sub-value"
+                                           Text="{Binding MachineRamUsedGb, StringFormat='{}{0:F1} GB'}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="1">
+                                <TextBlock Classes="sub-label" Text="TOTAL"/>
+                                <TextBlock Classes="sub-value"
+                                           Text="{Binding MachineRamTotalGb, StringFormat='{}{0:F1} GB'}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="1">
+                                <TextBlock Classes="sub-label" Text="FREE"/>
+                                <TextBlock Classes="sub-value"
+                                           Text="{Binding MachineRamFreeGb, StringFormat='{}{0:F1} GB'}"/>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
             </Grid>
 
             <!-- ── CraftConsole Process section ── -->
-            <TextBlock Classes="section-head" Text="CRAFTCONSOLE PROCESS"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <Border Width="2" Height="12" CornerRadius="1"
+                        Background="{DynamicResource AccentBrush}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Classes="section-head" Text="CRAFTCONSOLE PROCESS" VerticalAlignment="Center"/>
+            </StackPanel>
             <Grid ColumnDefinitions="*,*">
+                <!-- App CPU card -->
                 <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="metric-label" Text="CPU USAGE"/>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="&#xE9F5;"
+                                       FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Classes="metric-label"
+                                       Text="CPU USAGE" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="card-menu" Content="···"/>
+                        </Grid>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Classes="metric-value"
                                        Text="{Binding AppCpuPercent, StringFormat='{}{0:F1}'}"/>
@@ -129,9 +225,21 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <!-- App Memory card -->
                 <Border Grid.Column="1" Classes="card">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="metric-label" Text="MEMORY"/>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0"
+                                       Text="&#xE753;"
+                                       FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock Grid.Column="1" Classes="metric-label"
+                                       Text="MEMORY" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="card-menu" Content="···"/>
+                        </Grid>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Classes="metric-value"
                                        Text="{Binding AppRamMb, StringFormat='{}{0:F0}'}"/>
@@ -141,117 +249,71 @@
                 </Border>
             </Grid>
 
-            <!-- ── Server section label ── -->
-            <TextBlock Classes="section-head" Text="SERVER"/>
+            <!-- ── Server section ── -->
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <Border Width="2" Height="12" CornerRadius="1"
+                        Background="{DynamicResource AccentBrush}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Classes="section-head" Text="SERVER" VerticalAlignment="Center"/>
+            </StackPanel>
 
-            <!-- ── Stat tiles (4 columns) ── -->
-            <Grid ColumnDefinitions="*,*,*,*">
+            <!-- ── Stat tiles (3 columns) — elevated glass cards with arc gauges ── -->
+            <Grid ColumnDefinitions="*,*,*">
 
-                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
-                    <StackPanel Spacing="8">
+                <!-- Players Online -->
+                <Border Grid.Column="0" Theme="{StaticResource GlassCard}" Margin="0,0,10,0">
+                    <StackPanel Spacing="10">
                         <TextBlock Classes="metric-label" Text="PLAYERS ONLINE"/>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Classes="metric-value" Text="{Binding PlayerCount}"/>
-                            <TextBlock Classes="metric-unit"
-                                       Text="{Binding MaxPlayers, StringFormat='/{0}'}"/>
-                        </StackPanel>
-                        <ProgressBar Value="{Binding PlayerCount}"
-                                     Maximum="{Binding MaxPlayers}"
-                                     Height="3" Margin="0,2,0,0"
-                                     Foreground="{DynamicResource AccentBrush}"/>
+                        <controls:ArcGauge Value="{Binding PlayerCount}"
+                                           Maximum="{Binding MaxPlayers}"
+                                           Unit="online"
+                                           HorizontalAlignment="Center">
+                            <controls:ArcGauge.GaugeColor>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                    <GradientStop Color="#22D3EE" Offset="0"/>
+                                    <GradientStop Color="#67E8F9" Offset="1"/>
+                                </LinearGradientBrush>
+                            </controls:ArcGauge.GaugeColor>
+                        </controls:ArcGauge>
+                        <TextBlock Text="{Binding MaxPlayers, StringFormat='max {0}'}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="1" Classes="card" Margin="0,0,10,0">
-                    <StackPanel Spacing="8">
-                        <TextBlock Classes="metric-label" Text="TICKS PER SECOND"/>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Classes="metric-value"
-                                       Text="{Binding Tps, StringFormat='{}{0:F1}'}"/>
-                            <TextBlock Classes="metric-unit" Text="/20"/>
-                        </StackPanel>
-                        <ProgressBar Value="{Binding Tps}" Maximum="20"
-                                     Height="3" Margin="0,2,0,0"
-                                     Foreground="{DynamicResource InfoBrush}"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="2" Classes="card" Margin="0,0,10,0">
-                    <StackPanel Spacing="8">
+                <!-- Server Memory -->
+                <Border Grid.Column="1" Theme="{StaticResource GlassCard}" Margin="0,0,10,0">
+                    <StackPanel Spacing="10">
                         <TextBlock Classes="metric-label" Text="MEMORY USED"/>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Classes="metric-value"
-                                       Text="{Binding RamUsedMb, StringFormat='{}{0:F0}'}"/>
-                            <TextBlock Classes="metric-unit" Text="MB"/>
-                        </StackPanel>
-                        <ProgressBar Value="{Binding RamPercent}" Maximum="100"
-                                     Height="3" Margin="0,2,0,0"
-                                     Foreground="{DynamicResource WarnBrush}"/>
+                        <controls:ArcGauge Value="{Binding RamUsedMb}"
+                                           Maximum="{Binding RamMaxMb}"
+                                           Unit="MB"
+                                           HorizontalAlignment="Center">
+                            <controls:ArcGauge.GaugeColor>
+                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                    <GradientStop Color="#FB923C" Offset="0"/>
+                                    <GradientStop Color="#FCD34D" Offset="1"/>
+                                </LinearGradientBrush>
+                            </controls:ArcGauge.GaugeColor>
+                        </controls:ArcGauge>
+                        <TextBlock Text="{Binding RamMaxMb, StringFormat='peak {0:F0} MB'}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Column="3" Classes="card">
+                <!-- Uptime (no gauge — time is not a percentage) -->
+                <Border Grid.Column="2" Theme="{StaticResource GlassCard}">
                     <StackPanel Spacing="8">
                         <TextBlock Classes="metric-label" Text="UPTIME"/>
-                        <TextBlock Classes="metric-value" Text="{Binding UptimeLabel}"/>
+                        <TextBlock Classes="metric-value"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   Text="{Binding UptimeLabel}"/>
                         <TextBlock Text="since last start" FontSize="11"
                                    Foreground="{DynamicResource TextMutedBrush}"/>
                     </StackPanel>
-                </Border>
-
-            </Grid>
-
-            <!-- ── Charts row ── -->
-            <Grid ColumnDefinitions="*,260">
-
-                <!-- TPS history -->
-                <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal"
-                                    Spacing="10" Margin="0,0,0,14">
-                            <TextBlock Classes="section-head" Text="TPS HISTORY"
-                                       VerticalAlignment="Center"/>
-                            <TextBlock Text="60 samples"
-                                       FontSize="10"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <Panel Height="150">
-                            <Rectangle Fill="{DynamicResource SurfaceBrush}"/>
-                            <lvc:CartesianChart Series="{Binding TpsSeries}"
-                                                XAxes="{Binding TpsXAxes}"
-                                                YAxes="{Binding TpsYAxes}"
-                                                Background="#0F1824"
-                                                TooltipPosition="Hidden"/>
-                        </Panel>
-                    </DockPanel>
-                </Border>
-
-                <!-- RAM donut -->
-                <Border Grid.Column="1" Classes="card">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top"
-                                   Classes="section-head" Text="MEMORY"
-                                   Margin="0,0,0,12"/>
-                        <Panel Height="150">
-                            <Rectangle Fill="{DynamicResource SurfaceBrush}"/>
-                            <lvc:PieChart Series="{Binding RamSeries}"
-                                          Background="#0F1824"
-                                          TooltipPosition="Hidden"
-                                          InitialRotation="-90"/>
-                            <!-- Overlay percentage -->
-                            <StackPanel HorizontalAlignment="Center"
-                                        VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{Binding RamPercent, StringFormat='{}{0:F0}%'}"
-                                           FontSize="18" FontWeight="Bold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="used" FontSize="10"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </Panel>
-                    </DockPanel>
                 </Border>
 
             </Grid>

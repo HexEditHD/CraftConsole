@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CraftConsole.Core.Models;
-using CraftConsole.Core.Players;
 using CraftConsole.Core.Process;
 using CraftConsole.Core.Servers;
 
@@ -12,12 +12,24 @@ public partial class ConsoleViewModel : ObservableObject
 {
     private IMinecraftServer? _server;
     private IDisposable? _subscription;
+    private readonly HttpClient _http = new();
 
     // ── Output ──────────────────────────────────────────────────────────
     public ObservableCollection<ConsoleEntry> Entries { get; } = [];
+    [ObservableProperty] private bool _hasEntries;
 
     // ── Players sidebar ──────────────────────────────────────────────────
-    public ObservableCollection<Player> ConnectedPlayers { get; } = [];
+    public ObservableCollection<PlayerAvatarItem> ConnectedPlayers { get; } = [];
+    [ObservableProperty] private int _connectedPlayerCount;
+
+    // ── Auto-scroll ──────────────────────────────────────────────────────
+    [ObservableProperty] private bool _autoScroll = true;
+
+    public ConsoleViewModel()
+    {
+        Entries.CollectionChanged          += (_, _) => HasEntries             = Entries.Count > 0;
+        ConnectedPlayers.CollectionChanged += (_, _) => ConnectedPlayerCount   = ConnectedPlayers.Count;
+    }
 
     // ── Server quick-action commands (set by MainWindowViewModel) ────────
     public IRelayCommand? StartServerCommand { get; set; }
@@ -73,7 +85,11 @@ public partial class ConsoleViewModel : ObservableObject
                 {
                     case PlayerJoinedEvent j:
                         if (!ConnectedPlayers.Any(p => p.Username == j.Player.Username))
-                            ConnectedPlayers.Add(j.Player);
+                        {
+                            var item = new PlayerAvatarItem(j.Player.Username);
+                            ConnectedPlayers.Add(item);
+                            _ = LoadAvatarAsync(item);
+                        }
                         break;
                     case PlayerLeftEvent l:
                         var leaving = ConnectedPlayers.FirstOrDefault(p => p.Username == l.Username);
@@ -92,6 +108,21 @@ public partial class ConsoleViewModel : ObservableObject
         ConnectedPlayers.Clear();
     }
 
+    private async Task LoadAvatarAsync(PlayerAvatarItem item)
+    {
+        try
+        {
+            var resp = await _http.GetAsync(
+                $"https://mc-heads.net/avatar/{Uri.EscapeDataString(item.Username)}/32");
+            resp.EnsureSuccessStatusCode();
+            await using var stream = await resp.Content.ReadAsStreamAsync();
+            // Bitmap must be created on a background thread; UI update via ObservableProperty
+            var bmp = new Bitmap(stream);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => item.Avatar = bmp);
+        }
+        catch { /* network unavailable — fallback letter stays */ }
+    }
+
     // ── Commands ─────────────────────────────────────────────────────────
 
     [RelayCommand]
@@ -100,7 +131,6 @@ public partial class ConsoleViewModel : ObservableObject
         var cmd = CommandInput.Trim();
         if (string.IsNullOrWhiteSpace(cmd)) return;
 
-        // Record in history (deduplicate consecutive duplicates)
         if (_history.Count == 0 || _history[^1] != cmd)
             _history.Add(cmd);
         _historyIndex = -1;
@@ -108,7 +138,6 @@ public partial class ConsoleViewModel : ObservableObject
         ShowSuggestions = false;
         CommandInput = string.Empty;
 
-        // Echo the command in the console so the user sees what was sent
         Entries.Add(new ConsoleEntry(
             DateTimeOffset.Now,
             Raw: $"> {cmd}",
@@ -122,13 +151,15 @@ public partial class ConsoleViewModel : ObservableObject
             return;
         }
 
-        // Minecraft server console does not use the leading slash — strip it
         var processCmd = cmd.StartsWith('/') ? cmd[1..] : cmd;
         await _server.SendCommandAsync(processCmd);
     }
 
     [RelayCommand]
     private void ClearConsole() => Entries.Clear();
+
+    [RelayCommand]
+    private void ToggleAutoScroll() => AutoScroll = !AutoScroll;
 
     // ── Called from code-behind on KeyDown ────────────────────────────────
 

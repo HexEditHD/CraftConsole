@@ -1,15 +1,11 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using System.Collections.Specialized;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
-using LiveChartsCore;
-using LiveChartsCore.Defaults;
-using LiveChartsCore.SkiaSharpView;
-using LiveChartsCore.SkiaSharpView.Painting;
 using CraftConsole.Core.Models;
+using CraftConsole.Core.Players;
 using CraftConsole.Core.Process;
 using CraftConsole.Core.Servers;
-using SkiaSharp;
 
 namespace CraftConsole.Modules.Dashboard.ViewModels;
 
@@ -20,6 +16,7 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private double _machineRamUsedGb;
     [ObservableProperty] private double _machineRamTotalGb;
     [ObservableProperty] private double _machineRamPercent;
+    [ObservableProperty] private double _machineRamFreeGb;
 
     // --- App (CraftConsole process) metrics ---
     [ObservableProperty] private double _appCpuPercent;
@@ -35,32 +32,10 @@ public partial class DashboardViewModel : ObservableObject
     // --- Live metrics ---
     [ObservableProperty] private int _playerCount;
     [ObservableProperty] private int _maxPlayers = 20;
-    [ObservableProperty] private double _tps = 20.0;
     [ObservableProperty] private double _ramUsedMb;
     [ObservableProperty] private double _ramMaxMb;
     [ObservableProperty] private double _ramPercent;
     [ObservableProperty] private double _cpuPercent;
-
-    // --- TPS sparkline (last 60 samples) ---
-    private readonly ObservableCollection<ObservableValue> _tpsSamples = [];
-    public ISeries[] TpsSeries { get; }
-    public Axis[] TpsXAxes { get; } =
-    [
-        new Axis { IsVisible = false }
-    ];
-    public Axis[] TpsYAxes { get; } =
-    [
-        new Axis
-        {
-            MinLimit = 0, MaxLimit = 20,
-            IsVisible = false
-        }
-    ];
-
-    // --- RAM pie ---
-    private readonly ObservableValue _ramUsed = new(0);
-    private readonly ObservableValue _ramFree = new(1);
-    public ISeries[] RamSeries { get; }
 
     private IMinecraftServer? _server;
     private System.Diagnostics.Process? _process;
@@ -79,19 +54,15 @@ public partial class DashboardViewModel : ObservableObject
     private TimeSpan _lastAppCpuTime;
     private DateTime _lastAppCpuCheck;
 
-    // Parses: [HH:mm:ss] [Server thread/INFO]: TPS from last 1m, 5m, 15m: 19.95, 19.97, 19.98
-    private static readonly Regex TpsPattern = new(
-        @"TPS from last 1m, 5m, 15m: (?<t1>[\d.]+),", RegexOptions.Compiled);
-
     // Parses server version line: Starting minecraft server version 1.21.4
     private static readonly Regex VersionPattern = new(
         @"Starting minecraft server version (?<ver>[\d.]+)", RegexOptions.Compiled);
 
+    // Player source (set by MainWindowViewModel after server starts)
+    private ObservableCollection<Player>? _playerSource;
+
     public DashboardViewModel()
     {
-        for (int i = 0; i < 60; i++)
-            _tpsSamples.Add(new ObservableValue(20));
-
         // Init machine performance counters (Windows only; graceful fallback)
         try
         {
@@ -117,37 +88,21 @@ public partial class DashboardViewModel : ObservableObject
 
         // Start a machine/app metrics timer immediately (no server needed)
         _ = new Timer(PollMachineMetrics, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
-
-        TpsSeries =
-        [
-            new LineSeries<ObservableValue>
-            {
-                Values = _tpsSamples,
-                Fill = new SolidColorPaint(new SKColor(12, 45, 56, 200)),
-                Stroke = new SolidColorPaint(new SKColor(34, 211, 238), 2),
-                GeometrySize = 0,
-                LineSmoothness = 0.5,
-            }
-        ];
-
-        RamSeries =
-        [
-            new PieSeries<ObservableValue>
-            {
-                Values = [_ramUsed],
-                Fill = new SolidColorPaint(new SKColor(34, 211, 238)),
-                Name = "Used",
-                InnerRadius = 40,
-            },
-            new PieSeries<ObservableValue>
-            {
-                Values = [_ramFree],
-                Fill = new SolidColorPaint(new SKColor(22, 32, 53)),
-                Name = "Free",
-                InnerRadius = 40,
-            }
-        ];
     }
+
+    /// <summary>Called by MainWindowViewModel after a server starts to get an accurate player count.</summary>
+    public void SetPlayerSource(ObservableCollection<Player> players)
+    {
+        if (_playerSource is not null)
+            _playerSource.CollectionChanged -= OnPlayerSourceChanged;
+
+        _playerSource = players;
+        _playerSource.CollectionChanged += OnPlayerSourceChanged;
+        PlayerCount = _playerSource.Count;
+    }
+
+    private void OnPlayerSourceChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        => Avalonia.Threading.Dispatcher.UIThread.Post(() => PlayerCount = _playerSource?.Count ?? 0);
 
     public void Attach(IMinecraftServer server)
     {
@@ -190,24 +145,12 @@ public partial class DashboardViewModel : ObservableObject
 
     private void OnConsoleEntry(ConsoleEntry entry)
     {
-        // TPS (via /tps command response)
-        if (TpsPattern.Match(entry.Message) is { Success: true } tpsMatch
-            && double.TryParse(tpsMatch.Groups["t1"].Value, out var tps))
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => PushTps(tps));
-        }
-
         // Version
         if (VersionPattern.Match(entry.Message) is { Success: true } vMatch)
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 ServerVersion = vMatch.Groups["ver"].Value);
         }
-
-        // Player count from events
-        var evt = ServerEventParser.TryParse(entry);
-        if (evt is PlayerJoinedEvent) Avalonia.Threading.Dispatcher.UIThread.Post(() => PlayerCount++);
-        if (evt is PlayerLeftEvent)   Avalonia.Threading.Dispatcher.UIThread.Post(() => PlayerCount = Math.Max(0, PlayerCount - 1));
     }
 
     private void PollProcessMetrics(object? _)
@@ -238,19 +181,9 @@ public partial class DashboardViewModel : ObservableObject
                 RamPercent = Math.Round(ramPct, 1);
                 Uptime     = uptime;
                 UptimeLabel = FormatUptime(uptime);
-
-                _ramUsed.Value = ramMb;
-                _ramFree.Value = Math.Max(0, maxMb - ramMb);
             });
         }
         catch { /* process may have exited mid-read */ }
-    }
-
-    private void PushTps(double tps)
-    {
-        Tps = Math.Round(tps, 2);
-        _tpsSamples.RemoveAt(0);
-        _tpsSamples.Add(new ObservableValue(tps));
     }
 
     private void PollMachineMetrics(object? _)
@@ -273,6 +206,7 @@ public partial class DashboardViewModel : ObservableObject
                 availMb = _machineRamCounter.NextValue();
 #pragma warning restore CA1416
             double usedGb  = Math.Round(totalGb - availMb / 1024.0, 2);
+            double freeGb  = Math.Round(totalGb - usedGb, 2);
             double ramPct  = totalGb > 0 ? Math.Round(usedGb / totalGb * 100, 1) : 0;
 
             // App CPU
@@ -297,6 +231,7 @@ public partial class DashboardViewModel : ObservableObject
                 MachineRamUsedGb   = usedGb;
                 MachineRamTotalGb  = totalGb;
                 MachineRamPercent  = ramPct;
+                MachineRamFreeGb   = freeGb;
                 AppCpuPercent      = appCpu;
                 AppRamMb           = appRam;
             });

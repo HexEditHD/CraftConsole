@@ -22,6 +22,15 @@ public class AppSettings
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    public static AppSettings Load(string appDataPath)
+    {
+        var path = Path.Combine(appDataPath, "settings.json");
+        if (!File.Exists(path)) return new AppSettings();
+
+        using var stream = File.OpenRead(path);
+        return JsonSerializer.Deserialize<AppSettings>(stream, JsonOptions) ?? new AppSettings();
+    }
+
     public static async Task<AppSettings> LoadAsync(string appDataPath)
     {
         var path = Path.Combine(appDataPath, "settings.json");

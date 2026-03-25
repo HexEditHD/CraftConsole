@@ -27,18 +27,6 @@
             <Setter Property="Margin"       Value="0,0,0,5"/>
         </Style>
 
-        <!-- Server type card ListBox -->
-        <Style Selector="ListBox.type-picker">
-            <Setter Property="Background"      Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding"         Value="0"/>
-        </Style>
-        <Style Selector="ListBox.type-picker ListBoxItem">
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="Margin"  Value="0,0,8,0"/>
-            <Setter Property="Cursor"  Value="Hand"/>
-        </Style>
-
     </UserControl.Styles>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -53,64 +41,6 @@
                            FontSize="12"
                            Foreground="{DynamicResource TextMutedBrush}"/>
             </StackPanel>
-
-            <!-- ── Server type picker ── -->
-            <ListBox Classes="type-picker"
-                     ItemsSource="{x:Static vm:ServerViewModel.AllServerTypes}"
-                     SelectedItem="{Binding SelectedServerType}">
-
-                <ListBox.ItemContainerTheme>
-                    <ControlTheme TargetType="ListBoxItem">
-                        <Setter Property="Padding" Value="0"/>
-                        <Setter Property="Margin"  Value="0,0,8,0"/>
-                        <Setter Property="Cursor"  Value="Hand"/>
-                        <Setter Property="Template">
-                            <ControlTemplate>
-                                <Border x:Name="TypeCard"
-                                        Background="{DynamicResource SurfaceBrush}"
-                                        BorderBrush="{DynamicResource SurfaceBorderBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{DynamicResource CardRadius}"
-                                        Padding="16,12"
-                                        MinWidth="120">
-                                    <ContentPresenter Content="{TemplateBinding Content}"
-                                                      ContentTemplate="{TemplateBinding ContentTemplate}"
-                                                      HorizontalContentAlignment="Left"
-                                                      VerticalContentAlignment="Center"/>
-                                </Border>
-                            </ControlTemplate>
-                        </Setter>
-                        <Style Selector="^:selected /template/ Border#TypeCard">
-                            <Setter Property="Background"  Value="{DynamicResource AccentDimBrush}"/>
-                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                        </Style>
-                        <Style Selector="^:pointerover /template/ Border#TypeCard">
-                            <Setter Property="Background"  Value="{DynamicResource SurfaceAltBrush}"/>
-                        </Style>
-                    </ControlTheme>
-                </ListBox.ItemContainerTheme>
-
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal"/>
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ServerTypeInfo">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="{Binding Tag}"
-                                       FontSize="9" FontWeight="Bold"
-                                       LetterSpacing="1.2"
-                                       Foreground="{DynamicResource AccentBrush}"/>
-                            <TextBlock Text="{Binding DisplayName}"
-                                       FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-
-            </ListBox>
 
             <!-- ── Config + Download row ── -->
             <Grid ColumnDefinitions="*,Auto">
@@ -151,7 +81,10 @@
                                         IsEnabled="{Binding !IsDetectingJava}"
                                         CornerRadius="0,8,8,0"
                                         Padding="14,9">
-                                    <TextBlock Text="{Binding IsDetectingJava, StringFormat='{}{0:Scanning…|Scan}'}"/>
+                                    <Panel>
+                                        <TextBlock Text="Scan"      IsVisible="{Binding !IsDetectingJava}"/>
+                                        <TextBlock Text="Scanning…" IsVisible="{Binding IsDetectingJava}"/>
+                                    </Panel>
                                 </Button>
                             </Grid>
                         </StackPanel>
@@ -242,12 +175,22 @@
                                        LetterSpacing="1.2"
                                        Foreground="{DynamicResource TextMutedBrush}"/>
 
-                            <!-- Placeholder: no type selected -->
-                            <TextBlock IsVisible="{Binding !ServerTypeSelected}"
-                                       Text="Select a server type above to see download options."
-                                       FontSize="11"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       TextWrapping="Wrap"/>
+                            <!-- Server type dropdown -->
+                            <TextBlock Classes="field-label" Text="SERVER TYPE"/>
+                            <ComboBox ItemsSource="{x:Static vm:ServerViewModel.AllServerTypes}"
+                                      SelectedItem="{Binding SelectedServerType}"
+                                      PlaceholderText="Select server type…"
+                                      Background="{DynamicResource SurfaceAltBrush}"
+                                      BorderBrush="{DynamicResource SurfaceBorderBrush}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      HorizontalAlignment="Stretch"
+                                      Padding="12,9">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ServerTypeInfo">
+                                        <TextBlock Text="{Binding DisplayName}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
 
                             <!-- Server type selected content -->
                             <StackPanel IsVisible="{Binding ServerTypeSelected}" Spacing="12">
@@ -318,7 +261,7 @@
                                                    FontSize="11"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap"/>
-                                        <TextBlock Text="Browse for the JAR in the form on the left once downloaded."
+                                        <TextBlock Text="Browse for the JAR using the '…' button in the form on the left once downloaded."
                                                    FontSize="10"
                                                    Foreground="{DynamicResource TextMutedBrush}"
                                                    TextWrapping="Wrap"/>

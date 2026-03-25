@@ -33,6 +33,13 @@
     <SolidColorBrush x:Key="InfoDimBrush"         Color="#0F1E38"/>
 
     <!-- ============================================================
+         SHADOWS & GLOWS
+    ============================================================ -->
+    <BoxShadows x:Key="CardShadow">0 4 24 0 #1A000000</BoxShadows>
+    <BoxShadows x:Key="AccentGlow">0 0 18 3 #3022D3EE</BoxShadows>
+    <BoxShadows x:Key="DangerGlow">0 0 14 2 #30F87171</BoxShadows>
+
+    <!-- ============================================================
          CORNER RADII
     ============================================================ -->
     <CornerRadius x:Key="CardRadius">12</CornerRadius>
@@ -86,6 +93,7 @@
         <Style Selector="^:pointerover /template/ Border">
             <Setter Property="Background"  Value="{StaticResource AccentBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="BoxShadow"   Value="{StaticResource AccentGlow}"/>
         </Style>
         <Style Selector="^:pointerover /template/ ContentPresenter">
             <Setter Property="Foreground" Value="#080D14"/>
@@ -125,7 +133,30 @@
         </Setter>
         <Style Selector="^:pointerover">
             <Setter Property="Opacity" Value="0.8"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
         </Style>
+    </ControlTheme>
+
+    <!-- ============================================================
+         GLASS CARD — elevated variant for key metrics
+         Gradient bg + cyan top accent border + ambient glow
+    ============================================================ -->
+    <ControlTheme x:Key="GlassCard" TargetType="Border">
+        <Setter Property="Background">
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Color="#141F30" Offset="0"/>
+                <GradientStop Color="#0F1824" Offset="1"/>
+            </LinearGradientBrush>
+        </Setter>
+        <Setter Property="BorderBrush"     Value="{StaticResource AccentDimBrush}"/>
+        <Setter Property="BorderThickness" Value="0,2,0,0"/>
+        <Setter Property="CornerRadius"    Value="{StaticResource CardRadius}"/>
+        <Setter Property="BoxShadow"       Value="{StaticResource AccentGlow}"/>
+        <Setter Property="Padding"         Value="20"/>
     </ControlTheme>
 
 </ResourceDictionary>

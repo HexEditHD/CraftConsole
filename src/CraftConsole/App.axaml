@@ -14,11 +14,13 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://CraftConsole/Themes/CraftConsoleTheme.axaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <converters:LevelToColorConverter     x:Key="LevelToColorConverter"/>
-            <converters:UsernameToColorConverter   x:Key="UsernameToColorConverter"/>
-            <converters:IssueTypeToBgConverter     x:Key="IssueTypeToBgConverter"/>
-            <converters:IssueTypeToFgConverter     x:Key="IssueTypeToFgConverter"/>
-            <converters:StringToBrushConverter     x:Key="StringToBrushConverter"/>
+            <converters:LevelToColorConverter      x:Key="LevelToColorConverter"/>
+            <converters:UsernameToColorConverter    x:Key="UsernameToColorConverter"/>
+            <converters:IssueTypeToBgConverter      x:Key="IssueTypeToBgConverter"/>
+            <converters:IssueTypeToFgConverter      x:Key="IssueTypeToFgConverter"/>
+            <converters:StringToBrushConverter      x:Key="StringToBrushConverter"/>
+            <converters:BoolToStatusBrushConverter  x:Key="BoolToStatusBrushConverter"/>
+            <converters:BoolToOpacityConverter      x:Key="BoolToOpacityConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -68,6 +70,15 @@
             <Setter Property="Foreground"   Value="{StaticResource AccentBrush}"/>
             <Setter Property="CornerRadius" Value="3"/>
             <Setter Property="MinHeight"    Value="0"/>
+        </Style>
+
+        <!-- Nav tab label — smooth color fade on selection -->
+        <Style Selector="ListBoxItem TextBlock">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+                </Transitions>
+            </Setter>
         </Style>
     </Application.Styles>
 </Application>

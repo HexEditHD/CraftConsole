@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CraftConsole.Core.Models;
 using CraftConsole.Infrastructure.Config;
 using CraftConsole.Infrastructure.Http;
 using CraftConsole.Modules.Backup.ViewModels;
@@ -17,11 +18,10 @@ namespace CraftConsole.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    [ObservableProperty]
-    private ObservableObject _currentPage;
-
-    [ObservableProperty]
-    private NavItem _selectedNavItem;
+    [ObservableProperty] private ObservableObject _currentPage;
+    [ObservableProperty] private NavItem _selectedNavItem;
+    [ObservableProperty] private string _serverStatusLabel = "No server";
+    [ObservableProperty] private bool _serverRunning;
 
     public List<NavItem> NavItems { get; }
     private readonly ServerViewModel _serverVm;
@@ -69,12 +69,21 @@ public partial class MainWindowViewModel : ViewModelBase
         serverVm.ServerStarted = server =>
         {
             dashboardVm.Attach(server);
+            dashboardVm.SetPlayerSource(playersVm.Players);
             consoleVm.Attach(server);
             playersVm.Attach(server);
             issuesVm.Attach(server);
             pluginsVm.Attach(server);
             editorVm.Attach(server);
             schedulerVm.Attach(server);
+
+            // Update header status chip
+            server.StatusChanged.Subscribe(s =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    ServerStatusLabel = s.ToString();
+                    ServerRunning     = s == ServerStatus.Running;
+                }));
         };
 
         // Wire reason dialog for Players (must be done via the View — see PlayersView.axaml.cs)

@@ -29,6 +29,24 @@
                                LetterSpacing="1.2"
                                Foreground="{DynamicResource TextMutedBrush}"/>
                 </Border>
+                <!-- Sort toolbar -->
+                <Border DockPanel.Dock="Top"
+                        BorderBrush="{DynamicResource SeparatorBrush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="8,5">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Sort:"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   VerticalAlignment="Center"/>
+                        <Button Content="Name"
+                                Command="{Binding SortByNameCommand}"
+                                FontSize="10" Padding="6,3"/>
+                        <Button Content="Size"
+                                Command="{Binding SortBySizeCommand}"
+                                FontSize="10" Padding="6,3"/>
+                    </StackPanel>
+                </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <TreeView x:Name="FileTreeView"
                               ItemsSource="{Binding FileTree}"

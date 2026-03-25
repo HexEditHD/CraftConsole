@@ -62,10 +62,12 @@
                     <DataGrid x:Name="OnlineGrid"
                               ItemsSource="{Binding Players}"
                               SelectedItem="{Binding SelectedPlayer}"
+                              IsReadOnly="True"
                               AutoGenerateColumns="False"
                               CanUserReorderColumns="False"
                               CanUserResizeColumns="True"
-                              x:CompileBindings="False">
+                              x:CompileBindings="False"
+                              CellPointerPressed="OnOnlineGridCellPointerPressed">
 
                         <DataGrid.ContextMenu>
                             <ContextMenu>
@@ -76,12 +78,12 @@
                         </DataGrid.ContextMenu>
 
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Username"     Binding="{Binding Username}"                                  Width="130"/>
-                            <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}"                               Width="130"/>
-                            <DataGridTextColumn Header="IP Address"   Binding="{Binding IpAddress}"                                 Width="130"/>
-                            <DataGridTextColumn Header="Joined"       Binding="{Binding JoinedAt, StringFormat=\{0:HH:mm:ss\}}"    Width="80"/>
-                            <DataGridTextColumn Header="Last Seen"    Binding="{Binding LastSeen, StringFormat=\{0:HH:mm:ss\}}"    Width="80"/>
-                            <DataGridTextColumn Header="Location"     Binding="{Binding Location}"                                  Width="*"/>
+                            <DataGridTextColumn Header="Username"     Binding="{Binding Username}"                                 Width="130" MinWidth="90"/>
+                            <DataGridTextColumn Header="Display Name" Binding="{Binding DisplayName}"                              Width="140" MinWidth="110"/>
+                            <DataGridTextColumn Header="IP Address"   Binding="{Binding IpAddress}"                                Width="130" MinWidth="90"/>
+                            <DataGridTextColumn Header="Joined"       Binding="{Binding JoinedAt, StringFormat=\{0:HH:mm:ss\}}"   Width="95"  MinWidth="75"/>
+                            <DataGridTextColumn Header="Last Seen"    Binding="{Binding LastSeen, StringFormat=\{0:HH:mm:ss\}}"   Width="100" MinWidth="85"/>
+                            <DataGridTextColumn Header="Location"     Binding="{Binding Location}"                                 Width="*"   MinWidth="100"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>
@@ -92,22 +94,54 @@
                     <DataGrid x:Name="BannedGrid"
                               ItemsSource="{Binding BannedPlayers}"
                               SelectedItem="{Binding SelectedBannedPlayer}"
+                              IsReadOnly="True"
                               AutoGenerateColumns="False"
                               CanUserReorderColumns="False"
                               CanUserResizeColumns="True"
-                              x:CompileBindings="False">
+                              x:CompileBindings="False"
+                              CellPointerPressed="OnBannedGridCellPointerPressed">
 
                         <DataGrid.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Pardon"    Command="{Binding PardonPlayerCommand}"/>
-                                <MenuItem Header="Pardon IP" Command="{Binding PardonPlayerIpCommand}"/>
+                                <MenuItem Header="Pardon" Command="{Binding PardonPlayerCommand}"/>
                             </ContextMenu>
                         </DataGrid.ContextMenu>
 
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Username"   Binding="{Binding Username}"   Width="130"/>
-                            <DataGridTextColumn Header="IP Address" Binding="{Binding IpAddress}"  Width="130"/>
-                            <DataGridTextColumn Header="Banned At"  Binding="{Binding LastSeen, StringFormat=\{0:yyyy-MM-dd HH:mm\}}" Width="*"/>
+                            <DataGridTextColumn Header="Username"   Binding="{Binding Name}"    Width="130" MinWidth="90"/>
+                            <DataGridTextColumn Header="Created At" Binding="{Binding Created}" Width="160" MinWidth="100"/>
+                            <DataGridTextColumn Header="Created By" Binding="{Binding Source}"  Width="120" MinWidth="90"/>
+                            <DataGridTextColumn Header="Expires"    Binding="{Binding Expires}" Width="100" MinWidth="75"/>
+                            <DataGridTextColumn Header="Reason"     Binding="{Binding Reason}"  Width="*"   MinWidth="80"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+
+                <!-- Banned IPs -->
+                <StackPanel Spacing="0">
+                    <TextBlock Classes="section-label" Text="BANNED IPS"/>
+                    <DataGrid x:Name="BannedIpsGrid"
+                              ItemsSource="{Binding BannedIps}"
+                              SelectedItem="{Binding SelectedBannedIp}"
+                              IsReadOnly="True"
+                              AutoGenerateColumns="False"
+                              CanUserReorderColumns="False"
+                              CanUserResizeColumns="True"
+                              x:CompileBindings="False"
+                              CellPointerPressed="OnBannedIpsGridCellPointerPressed">
+
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Pardon IP" Command="{Binding PardonIpCommand}"/>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="IP Address" Binding="{Binding Ip}"      Width="130" MinWidth="90"/>
+                            <DataGridTextColumn Header="Banned At"  Binding="{Binding Created}" Width="160" MinWidth="100"/>
+                            <DataGridTextColumn Header="Expires"    Binding="{Binding Expires}" Width="100" MinWidth="75"/>
+                            <DataGridTextColumn Header="Reason"     Binding="{Binding Reason}"  Width="*"   MinWidth="80"/>
+                            <DataGridTextColumn Header="Source"     Binding="{Binding Source}"  Width="100" MinWidth="70"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>
