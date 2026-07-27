@@ -14,4 +14,7 @@
     <Project Path="src/CraftConsole.Modules.Settings/CraftConsole.Modules.Settings.csproj" />
     <Project Path="src/CraftConsole/CraftConsole.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CraftConsole.Tests/CraftConsole.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -17,12 +17,31 @@ public class UsernameToColorConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var name = value as string ?? string.Empty;
-        var hash = Math.Abs(name.GetHashCode());
-        var hex  = Palette[hash % Palette.Length];
+        var hash = GetStableHash(name);
+        var hex  = Palette[(int)(hash % (uint)Palette.Length)];
         try { return new SolidColorBrush(Color.Parse(hex)); }
         catch { return new SolidColorBrush(Colors.Gray); }
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
+
+    // string.GetHashCode() is randomized per-process (hash randomization), so it
+    // can't be used for a color that should stay stable across app restarts.
+    // FNV-1a over the invariant-uppercase name gives a deterministic, unsigned
+    // hash (no Math.Abs overflow on int.MinValue) that's also case-insensitive.
+    internal static uint GetStableHash(string name)
+    {
+        const uint fnvOffsetBasis = 2166136261;
+        const uint fnvPrime = 16777619;
+
+        var hash = fnvOffsetBasis;
+        foreach (var c in name.ToUpperInvariant())
+        {
+            hash ^= c;
+            hash *= fnvPrime;
+        }
+
+        return hash;
+    }
 }
