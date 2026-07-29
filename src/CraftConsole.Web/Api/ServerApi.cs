@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using CraftConsole.Web.Services;
 
@@ -8,8 +9,37 @@ public static class ServerApi
     public record CommandRequest(string Command);
     public record StartRequest(Guid? ProfileId);
 
+    /// <summary>
+    /// Panel version, from the assembly's informational version (set by the
+    /// release workflow from the git tag). Falls back to "dev" for local builds.
+    /// </summary>
+    public static string PanelVersion { get; } = ResolveVersion();
+
+    private static string ResolveVersion()
+    {
+        var informational = typeof(ServerApi).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+
+        if (string.IsNullOrWhiteSpace(informational)) return "dev";
+
+        // The SDK appends "+<commit sha>" when SourceLink is active.
+        var plus = informational.IndexOf('+');
+        var version = plus >= 0 ? informational[..plus] : informational;
+
+        return version is "1.0.0" ? "dev" : version;
+    }
+
     public static void MapServerApi(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/version", () => Results.Json(new
+        {
+            Version = PanelVersion,
+            Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+            Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            Architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
+        }, Json.Options));
+
         app.MapGet("/api/status", (ServerSupervisor sup) => Results.Json(sup.StatusSnapshot(), Json.Options));
 
         app.MapGet("/api/metrics", (MetricsSampler metrics) =>

@@ -6,11 +6,56 @@
     <Nullable>enable</Nullable>
     <AssemblyName>CraftConsole</AssemblyName>
     <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- WebApplicationFactory needs a reachable entry point; Program.cs declares
+         `public partial class Program` and this exposes it to the test project. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
+
+  <!-- Publish shape lives here rather than only in CI arguments, so a local
+       `dotnet publish -r <rid>` produces the same artifact the release does.
+       Trimming is deliberately off: minimal APIs and System.Text.Json rely on
+       reflection, and the risk outweighs the saving on an already-large
+       self-contained binary. -->
+  <PropertyGroup>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- Assets are embedded (below), so the static-web-assets pipeline would only
+         re-emit wwwroot as loose files next to the executable, along with .br/.gz
+         variants and an endpoints manifest — exactly what embedding avoids.
+         With this off, Development still serves wwwroot from the content root. -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+    <!-- No IIS hosting; web.config is dead weight in the artifact. -->
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Machine CPU/RAM gauges on the dashboard (Windows; graceful fallback elsewhere) -->
+    <!-- Machine CPU/RAM gauges on the dashboard (Windows; Linux reads /proc) -->
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- PublishSingleFile bundles assemblies but NOT static web assets, so a
+       "single file" build still needed wwwroot beside it. Embedding the files
+       as manifest resources makes the published executable genuinely
+       self-contained; Program.cs serves them through
+       ManifestEmbeddedFileProvider outside Development. -->
+  <PropertyGroup>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The Web SDK globs wwwroot into Content, which publishes it beside the
+         executable. Drop it from Content first, then embed — otherwise every
+         asset ships twice and the "single file" is a folder again.
+         Development is unaffected: it serves wwwroot from the content root
+         (the project directory), not from the build output. -->
+    <Content Remove="wwwroot\**" />
+    <EmbeddedResource Include="wwwroot\**\*" />
   </ItemGroup>
 
   <ItemGroup>

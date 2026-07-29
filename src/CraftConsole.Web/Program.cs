@@ -3,9 +3,17 @@ using CraftConsole.Infrastructure.Http;
 using CraftConsole.Infrastructure.Logging;
 using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
+using Microsoft.Extensions.FileProviders;
 using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// The configuration binder reads "--key value" as a pair, so a valueless flag
+// swallows whatever follows it: "--no-browser --urls http://…" bound the default
+// address because --urls became the *value* of --no-browser. Flags CraftConsole
+// interprets itself are removed before the host ever sees them.
+string[] ownFlags = ["--no-browser"];
+var hostArgs = args.Where(a => !ownFlags.Contains(a, StringComparer.OrdinalIgnoreCase)).ToArray();
+
+var builder = WebApplication.CreateBuilder(hostArgs);
 
 // Localhost only unless the user explicitly overrides via --urls / ASPNETCORE_URLS.
 // A password is required for every request once one is set up (see AuthService /
@@ -104,8 +112,25 @@ app.Use(async (ctx, next) =>
     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
 });
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
+// Development serves wwwroot from disk so edits show up on refresh without a
+// rebuild. Published builds serve the copies embedded in the assembly, which is
+// what makes the single-file executable genuinely self-contained — otherwise
+// PublishSingleFile leaves wwwroot as loose files beside the binary.
+// Both UseDefaultFiles and UseStaticFiles need the provider: without it on the
+// first, "/" never resolves to index.html.
+if (app.Environment.IsDevelopment())
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+else
+{
+    var embedded = new ManifestEmbeddedFileProvider(
+        typeof(Program).Assembly, "wwwroot");
+
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = embedded });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = embedded });
+}
 
 app.MapAuthApi();
 app.MapServerApi();
@@ -124,8 +149,12 @@ app.Lifetime.ApplicationStopping.Register(() =>
     supervisor.DisposeAsync().AsTask().GetAwaiter().GetResult();
 });
 
-// Open the panel in the default browser (skippable with --no-browser; dev runs skip it too)
-if (!args.Contains("--no-browser") && !app.Environment.IsDevelopment())
+// Open the panel in the default browser. Skipped for dev runs, for --no-browser,
+// and under systemd — a service account has no session to open a browser in.
+var headless = args.Contains("--no-browser")
+    || Environment.GetEnvironmentVariable("INVOCATION_ID") is not null; // set by systemd
+
+if (!headless && !app.Environment.IsDevelopment())
 {
     app.Lifetime.ApplicationStarted.Register(() =>
     {
@@ -139,3 +168,9 @@ if (!args.Contains("--no-browser") && !app.Environment.IsDevelopment())
 }
 
 app.Run();
+
+/// <summary>
+/// Named entry point so integration tests can host the app through
+/// WebApplicationFactory; top-level statements alone generate an internal class.
+/// </summary>
+public partial class Program;
