@@ -8,6 +8,7 @@ public class ProfilesServiceTests : IDisposable
 {
     private readonly string _dir;
     private readonly SettingsHolder _settings;
+    private readonly RconSecretStore _secrets;
     private readonly ProfilesService _profiles;
 
     public ProfilesServiceTests()
@@ -15,7 +16,8 @@ public class ProfilesServiceTests : IDisposable
         _dir = Path.Combine(Path.GetTempPath(), "cc-profiles-test-" + Guid.NewGuid());
         Directory.CreateDirectory(_dir);
         _settings = new SettingsHolder(_dir);
-        _profiles = new ProfilesService(_settings, NewSecrets());
+        _secrets = NewSecrets();
+        _profiles = new ProfilesService(_settings, _secrets);
     }
 
     /// <summary>
@@ -42,6 +44,14 @@ public class ProfilesServiceTests : IDisposable
         MinRamMb = 1024,
         MaxRamMb = 4096,
         Type = ServerType.Paper,
+    };
+
+    private static ServerProfile NewRconProfile(string name = "Remote") => new()
+    {
+        Name = name,
+        Mode = ConnectionMode.Rcon,
+        RconHost = "192.168.1.50",
+        RconPort = 25575,
     };
 
     [Fact]
@@ -156,5 +166,110 @@ public class ProfilesServiceTests : IDisposable
 
         Assert.Empty(await _profiles.ListAsync());
         Assert.Null(await _profiles.GetActiveAsync());
+    }
+
+    // ── Per-mode validation ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_profile_without_a_name_is_rejected()
+    {
+        var profile = NewProfile();
+        profile.Name = "  ";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _profiles.AddAsync(profile));
+    }
+
+    [Fact]
+    public async Task A_managed_profile_without_a_jar_path_is_rejected()
+    {
+        var profile = NewProfile();
+        profile.JarPath = "";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _profiles.AddAsync(profile));
+    }
+
+    [Fact]
+    public async Task An_rcon_profile_needs_no_jar_path()
+    {
+        var added = await _profiles.AddAsync(NewRconProfile());
+
+        Assert.Equal(ConnectionMode.Rcon, added.Mode);
+        Assert.Empty(added.JarPath);
+    }
+
+    [Fact]
+    public async Task An_rcon_profile_without_a_host_is_rejected()
+    {
+        var profile = NewRconProfile();
+        profile.RconHost = "";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _profiles.AddAsync(profile));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(65536)]
+    public async Task An_rcon_profile_with_a_port_outside_1_to_65535_is_rejected(int port)
+    {
+        var profile = NewRconProfile();
+        profile.RconPort = port;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _profiles.AddAsync(profile));
+    }
+
+    // ── Editing across modes ─────────────────────────────────────────────
+
+    /// <summary>
+    /// UpdateAsync copies fields one at a time rather than replacing the stored
+    /// object outright, so a field the copy list misses would persist on create
+    /// but silently fail to save on every future edit. The base
+    /// Update_replaces_the_fields_but_keeps_the_id test only checks Name and
+    /// MaxRamMb, which would not catch that — this checks every RCON field.
+    /// </summary>
+    [Fact]
+    public async Task Editing_an_rcon_profile_preserves_every_rcon_field()
+    {
+        var profile = await _profiles.AddAsync(NewRconProfile());
+
+        var replacement = NewRconProfile("Renamed");
+        replacement.RconHost = "10.0.0.7";
+        replacement.RconPort = 25580;
+
+        Assert.True(await _profiles.UpdateAsync(profile.Id, replacement));
+
+        var stored = await _profiles.GetAsync(profile.Id);
+        Assert.Equal("Renamed", stored!.Name);
+        Assert.Equal(ConnectionMode.Rcon, stored.Mode);
+        Assert.Equal("10.0.0.7", stored.RconHost);
+        Assert.Equal(25580, stored.RconPort);
+    }
+
+    [Fact]
+    public async Task Editing_a_managed_profile_into_rcon_mode_switches_it_over()
+    {
+        var profile = await _profiles.AddAsync(NewProfile());
+
+        var replacement = NewRconProfile();
+        Assert.True(await _profiles.UpdateAsync(profile.Id, replacement));
+
+        var stored = await _profiles.GetAsync(profile.Id);
+        Assert.Equal(ConnectionMode.Rcon, stored!.Mode);
+        Assert.Equal("192.168.1.50", stored.RconHost);
+        Assert.Equal(25575, stored.RconPort);
+    }
+
+    // ── Secret lifecycle ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Deleting_a_profile_removes_its_rcon_secret_too()
+    {
+        var profile = await _profiles.AddAsync(NewRconProfile());
+        await _secrets.SetAsync(profile.Id, "hunter2");
+        Assert.True(await _secrets.HasAsync(profile.Id));
+
+        await _profiles.DeleteAsync(profile.Id);
+
+        Assert.False(await _secrets.HasAsync(profile.Id));
     }
 }

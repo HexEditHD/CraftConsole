@@ -55,6 +55,22 @@ public class RconMinecraftServerTests
     }
 
     [Fact]
+    public async Task A_failed_connect_never_puts_the_password_in_the_thrown_message_or_the_console()
+    {
+        await using var fake = new FakeRconServer("hunter2");
+        const string attempted = "super-secret-attempt";
+        await using var server = new RconMinecraftServer(Profile(fake.Port), attempted);
+
+        var entries = new List<ConsoleEntry>();
+        using var _ = server.ConsoleOutput.Subscribe(entries.Add);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+
+        Assert.DoesNotContain(attempted, ex.Message);
+        Assert.DoesNotContain(entries, e => e.Message.Contains(attempted));
+    }
+
+    [Fact]
     public async Task Polling_list_surfaces_players_as_synthetic_join_lines_and_learns_the_real_max()
     {
         await using var fake = new FakeRconServer("hunter2");
@@ -141,6 +157,10 @@ public class RconMinecraftServerTests
         await using var fake = new FakeRconServer("hunter2");
         await using var server = new RconMinecraftServer(Profile(fake.Port), "hunter2");
 
+        // CanStart stays true even before/after a connection attempt — Start
+        // doubles as "(re)connect" for RCON, so it must never be permanently
+        // disabled just because a profile is active. See ServerCapabilities.Rcon.
+        Assert.True(server.Capabilities.CanStart);
         Assert.False(server.Capabilities.CanRestart);
         Assert.False(server.Capabilities.HasConsoleStream);
         Assert.False(server.Capabilities.HasLocalFiles);

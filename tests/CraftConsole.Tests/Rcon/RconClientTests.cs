@@ -32,6 +32,18 @@ public class RconClientTests
     }
 
     [Fact]
+    public async Task The_rejected_password_never_appears_in_the_auth_failure_message()
+    {
+        await using var server = new FakeRconServer("hunter2");
+        await using var client = new RconClient("127.0.0.1", server.Port);
+        const string attempted = "super-secret-attempt";
+
+        var ex = await Assert.ThrowsAsync<RconAuthException>(() => client.ConnectAsync(attempted));
+
+        Assert.DoesNotContain(attempted, ex.Message);
+    }
+
+    [Fact]
     public async Task Executing_a_command_returns_its_reply()
     {
         await using var server = new FakeRconServer("hunter2");
