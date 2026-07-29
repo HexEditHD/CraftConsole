@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CraftConsole.Core.Models;
 using CraftConsole.Core.Players;
 using CraftConsole.Web.Services;
 
@@ -33,6 +34,71 @@ public static class PlayersApi
 
         app.MapPost("/api/players/pardon-ip", (PlayerActionRequest req, ServerSupervisor sup)
             => RunPlayerCommand(sup, "pardon-ip", req.Target, null));
+
+        // ── Whitelist ─────────────────────────────────────────────────────
+        app.MapGet("/api/players/whitelist", (ServerSupervisor sup) => Results.Json(new
+        {
+            Entries = ReadServerJson<WhitelistEntry>(sup, "whitelist.json"),
+            // white-list is the historical spelling and is still what the file uses.
+            Enabled = ReadServerProperty(sup, "white-list") == "true",
+        }, Json.Options));
+
+        app.MapPost("/api/players/whitelist/add", (PlayerActionRequest req, ServerSupervisor sup)
+            => RunWhitelistCommand(sup, $"whitelist add {req.Target}", req.Target));
+
+        app.MapPost("/api/players/whitelist/remove", (PlayerActionRequest req, ServerSupervisor sup)
+            => RunWhitelistCommand(sup, $"whitelist remove {req.Target}", req.Target));
+
+        app.MapPost("/api/players/whitelist/on", (ServerSupervisor sup)
+            => RunWhitelistCommand(sup, "whitelist on", null));
+
+        app.MapPost("/api/players/whitelist/off", (ServerSupervisor sup)
+            => RunWhitelistCommand(sup, "whitelist off", null));
+
+        app.MapPost("/api/players/whitelist/reload", (ServerSupervisor sup)
+            => RunWhitelistCommand(sup, "whitelist reload", null));
+    }
+
+    private static async Task<IResult> RunWhitelistCommand(
+        ServerSupervisor sup, string command, string? target)
+    {
+        if (target is not null && string.IsNullOrWhiteSpace(target))
+            return Results.BadRequest(new { Message = "A player name is required." });
+
+        // Whitelist changes go through the server so it rewrites whitelist.json
+        // and applies them live; editing the file directly would need a reload
+        // and would be lost if the server rewrote it first.
+        if (sup.Status is not (ServerStatus.Running or ServerStatus.Starting))
+            return Results.BadRequest(new
+            {
+                Message = "The server must be running to change the whitelist."
+            });
+
+        await sup.SendCommandAsync(command);
+        return Results.NoContent();
+    }
+
+    /// <summary>Reads a single key from the server's server.properties.</summary>
+    private static string? ReadServerProperty(ServerSupervisor sup, string key)
+    {
+        var workingDir = sup.ActiveProfile?.WorkingDirectory;
+        if (workingDir is null) return null;
+
+        try
+        {
+            var path = Path.Combine(workingDir, "server.properties");
+            if (!File.Exists(path)) return null;
+
+            var prefix = key + "=";
+            foreach (var line in File.ReadLines(path))
+            {
+                if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return line[prefix.Length..].Trim();
+            }
+        }
+        catch { /* unreadable — treat as unset */ }
+
+        return null;
     }
 
     private static async Task<IResult> RunPlayerCommand(

@@ -3,6 +3,7 @@ import { h, icon, toast, promptReason, confirmDialog, timeAgo } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
+import { usernameColor } from '../usercolor.js';
 
 export default {
   id: 'players',
@@ -13,6 +14,7 @@ export default {
     let tab = 'online';
     let banned = [];
     let bannedIps = [];
+    let whitelist = { entries: [], enabled: false };
 
     const tabs = h('div', { class: 'tabs' });
     const body = h('div');
@@ -20,14 +22,22 @@ export default {
 
     const TABS = [
       ['online', 'Online'],
+      ['whitelist', 'Whitelist'],
       ['banned', 'Banned players'],
       ['banned-ips', 'Banned IPs'],
     ];
 
+    const tabCount = id => ({
+      online: state.players.length,
+      whitelist: whitelist.entries.length,
+      banned: banned.length,
+      'banned-ips': bannedIps.length,
+    })[id] ?? 0;
+
     function buildTabs() {
       tabs.innerHTML = '';
       for (const [id, label] of TABS) {
-        const count = id === 'online' ? state.players.length : id === 'banned' ? banned.length : bannedIps.length;
+        const count = tabCount(id);
         tabs.append(h('button', {
           class: `tab${tab === id ? ' active' : ''}`,
           onclick: () => { tab = id; buildTabs(); buildBody(); },
@@ -36,14 +46,25 @@ export default {
     }
 
     async function loadBanLists() {
-      try {
-        [banned, bannedIps] = await Promise.all([
-          api.get('/api/players/banned'),
-          api.get('/api/players/banned-ips'),
-        ]);
-      } catch { banned = []; bannedIps = []; }
+      const [b, ips, wl] = await Promise.allSettled([
+        api.get('/api/players/banned'),
+        api.get('/api/players/banned-ips'),
+        api.get('/api/players/whitelist'),
+      ]);
+      banned = b.status === 'fulfilled' ? b.value : [];
+      bannedIps = ips.status === 'fulfilled' ? ips.value : [];
+      whitelist = wl.status === 'fulfilled' ? wl.value : { entries: [], enabled: false };
       buildTabs();
       if (tab !== 'online') buildBody();
+    }
+
+    async function whitelistAction(path, body, successMessage) {
+      try {
+        await api.post(`/api/players/whitelist/${path}`, body ?? {});
+        toast(successMessage);
+        // The server rewrites whitelist.json; give it a moment before re-reading.
+        setTimeout(loadBanLists, 700);
+      } catch (err) { toast(err.message, 'err'); }
     }
 
     function avatarCell(username, colorHex) {
@@ -98,6 +119,76 @@ export default {
         return;
       }
 
+      if (tab === 'whitelist') {
+        const serverUp = ['Running', 'Starting'].includes(state.status?.status ?? 'Stopped');
+
+        const nameInput = h('input', {
+          class: 'input', placeholder: 'Player name', style: { maxWidth: '220px' },
+          onkeydown: e => { if (e.key === 'Enter') addPlayer(); },
+        });
+
+        const addPlayer = () => {
+          const name = nameInput.value.trim();
+          if (!name) return;
+          nameInput.value = '';
+          whitelistAction('add', { target: name }, `Whitelisted ${name}`);
+        };
+
+        body.append(h('div', { class: 'card', style: { marginBottom: '14px' } },
+          h('div', { class: 'switch-row', style: { paddingTop: 0 } },
+            h('div', {},
+              h('div', { class: 'switch-label' }, 'Whitelist enforcement'),
+              h('div', { class: 'switch-desc' },
+                whitelist.enabled
+                  ? 'Only whitelisted players can join.'
+                  : 'Anyone can join. The list below is kept but not enforced.')),
+            h('label', { class: 'switch', title: serverUp ? '' : 'The server must be running' },
+              h('input', {
+                type: 'checkbox', checked: whitelist.enabled, disabled: !serverUp,
+                onchange: e => whitelistAction(
+                  e.target.checked ? 'on' : 'off', null,
+                  e.target.checked ? 'Whitelist enabled' : 'Whitelist disabled'),
+              }),
+              h('span', { class: 'track' }))),
+          h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px' } },
+            nameInput,
+            h('button', { class: 'btn sm primary', disabled: !serverUp, onclick: addPlayer },
+              icon('plus'), 'Add player'),
+            h('button', {
+              class: 'btn sm ghost', disabled: !serverUp,
+              title: 'Re-read whitelist.json on the server',
+              onclick: () => whitelistAction('reload', null, 'Whitelist reloaded'),
+            }, icon('refresh'), 'Reload')),
+          !serverUp
+            ? h('div', { class: 'hint', style: { marginTop: '10px' } },
+                'Start the server to change the whitelist — changes go through it so whitelist.json stays in sync.')
+            : null));
+
+        if (!whitelist.entries.length) {
+          body.append(emptyState('users', 'Whitelist is empty',
+            'Add players above. With enforcement on and an empty list, nobody can join.'));
+          return;
+        }
+
+        body.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+          h('thead', {}, h('tr', {},
+            h('th', {}, 'Player'), h('th', {}, 'UUID'), h('th', {}))),
+          h('tbody', {}, whitelist.entries.map(entry => h('tr', {},
+            h('td', {}, avatarCell(entry.name, usernameColor(entry.name))),
+            h('td', { class: 'mono muted small' }, entry.uuid || '—'),
+            h('td', {}, h('div', { class: 'actions' },
+              h('button', {
+                class: 'btn sm danger', disabled: !serverUp,
+                onclick: async () => {
+                  if (!await confirmDialog('Remove from whitelist',
+                    `Remove “${entry.name}” from the whitelist?`,
+                    { danger: true, okLabel: 'Remove' })) return;
+                  whitelistAction('remove', { target: entry.name }, `Removed ${entry.name}`);
+                },
+              }, 'Remove')))))))));
+        return;
+      }
+
       if (tab === 'banned') {
         if (!banned.length) {
           body.append(emptyState('check', 'No banned players', 'Bans issued from the console or this panel show up here.'));
@@ -139,8 +230,12 @@ export default {
     buildBody();
     loadBanLists();
 
-    const off = on('store:players', () => { buildTabs(); if (tab === 'online') buildBody(); });
-    return () => off();
+    const offs = [
+      on('store:players', () => { buildTabs(); if (tab === 'online') buildBody(); }),
+      // Enable/disable and the "server must be running" hints depend on status.
+      on('store:status', () => { if (tab === 'whitelist') buildBody(); }),
+    ];
+    return () => offs.forEach(off => off());
   },
 };
 
