@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace CraftConsole.Infrastructure.Http;
@@ -53,13 +54,16 @@ public class JavaDownloadService
     }
 
     /// <summary>
-    /// Resolves the MSI installer URL for the given Java major version (Windows x64, Eclipse Temurin).
+    /// Resolves the installer/archive URL for the given Java major version
+    /// (current OS and CPU architecture, Eclipse Temurin).
     /// </summary>
     public async Task<(string FileName, string Url)> ResolveAsync(
         int major, CancellationToken ct = default)
     {
+        var os = OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "mac" : "linux";
+        var arch = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "aarch64" : "x64";
         var apiUrl = $"https://api.adoptium.net/v3/assets/latest/{major}/hotspot" +
-                     "?architecture=x64&image_type=jdk&os=windows&vendor=eclipse";
+                     $"?architecture={arch}&image_type=jdk&os={os}&vendor=eclipse";
 
         using var r = await _http.GetAsync(apiUrl, ct);
         r.EnsureSuccessStatusCode();
@@ -68,15 +72,16 @@ public class JavaDownloadService
 
         var assets = d.RootElement.EnumerateArray().ToList();
         if (assets.Count == 0)
-            throw new InvalidOperationException($"No Temurin assets found for Java {major}.");
+            throw new InvalidOperationException($"No Temurin assets found for Java {major} ({os}/{arch}).");
 
-        // Prefer MSI, fall back to zip
+        // Prefer the platform installer where one exists; Linux only ships tarballs.
+        var preferredExtension = os switch { "windows" => ".msi", "mac" => ".pkg", _ => ".tar.gz" };
         var pkg = assets
             .Select(a => a.GetProperty("binary").GetProperty("package"))
             .FirstOrDefault(p =>
             {
                 var name = p.GetProperty("name").GetString() ?? "";
-                return name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase);
+                return name.EndsWith(preferredExtension, StringComparison.OrdinalIgnoreCase);
             });
 
         if (pkg.ValueKind == System.Text.Json.JsonValueKind.Undefined)

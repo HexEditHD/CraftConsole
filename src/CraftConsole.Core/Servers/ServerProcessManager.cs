@@ -16,6 +16,15 @@ public sealed class ServerProcessManager : IMinecraftServer, IAsyncDisposable
     public ServerProfile Profile { get; }
     public ServerStatus Status => _status;
 
+    public int? ProcessId
+    {
+        get
+        {
+            try { return _process?.HasExited == false ? _process.Id : null; }
+            catch { return null; }
+        }
+    }
+
     public IObservable<ConsoleEntry> ConsoleOutput => _consoleSubject.AsObservable();
     public IObservable<ServerStatus> StatusChanged => _statusSubject.AsObservable();
 

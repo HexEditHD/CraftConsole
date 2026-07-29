@@ -1,0 +1,430 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using CraftConsole.Core.Models;
+using CraftConsole.Core.Players;
+using CraftConsole.Core.Process;
+using CraftConsole.Core.Servers;
+
+namespace CraftConsole.Web.Services;
+
+/// <summary>
+/// Owns the running Minecraft server process and every piece of live state derived
+/// from its console stream: the console ring buffer, online players, detected
+/// issues, server version, and EULA state. All changes are fanned out to SSE
+/// clients through the <see cref="EventBroker"/>.
+/// </summary>
+public sealed partial class ServerSupervisor : IAsyncDisposable
+{
+    private readonly EventBroker _broker;
+    private readonly SettingsHolder _settings;
+    private readonly HttpClient _http;
+    private readonly ILogger<ServerSupervisor> _log;
+
+    private readonly object _lock = new();
+    private readonly List<ConsoleEntry> _console = [];
+    private readonly List<Player> _players = [];
+    private readonly List<IssueEntry> _issues = [];
+    private readonly Dictionary<string, string> _geoCache = new();
+    private int _nextIssueId = 1;
+
+    private ServerProcessManager? _server;
+    private IDisposable? _consoleSub;
+    private IDisposable? _statusSub;
+
+    private string _serverVersion = "";
+    private int _maxPlayers = 20;
+    private DateTimeOffset? _startedAt;
+    private bool _eulaRequired;
+
+    /// <summary>Raised for every parsed game event; consumed by the scheduler.</summary>
+    public event Action<ServerEvent>? GameEvent;
+
+    public ServerProfile? ActiveProfile { get; private set; }
+    public ServerStatus Status => _server?.Status ?? ServerStatus.Stopped;
+    public int? ProcessId => _server?.ProcessId;
+    public DateTimeOffset? StartedAt => Status == ServerStatus.Running ? _startedAt : null;
+
+    [GeneratedRegex(@"Starting minecraft server version (?<ver>[\d.]+)")]
+    private static partial Regex VersionPattern();
+
+    public ServerSupervisor(
+        EventBroker broker, SettingsHolder settings, HttpClient http, ILogger<ServerSupervisor> log)
+    {
+        _broker = broker;
+        _settings = settings;
+        _http = http;
+        _log = log;
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+
+    public async Task StartAsync(ServerProfile profile, CancellationToken ct = default)
+    {
+        if (Status is ServerStatus.Running or ServerStatus.Starting)
+            throw new InvalidOperationException("The server is already running.");
+
+        await DisposeServerAsync();
+
+        lock (_lock)
+        {
+            _players.Clear();
+            _eulaRequired = false;
+            _serverVersion = "";
+        }
+
+        _maxPlayers = ReadMaxPlayers(profile.WorkingDirectory);
+        ActiveProfile = profile;
+
+        var server = new ServerProcessManager(profile);
+        _consoleSub = server.ConsoleOutput.Subscribe(OnConsoleEntry);
+        _statusSub = server.StatusChanged.Subscribe(OnStatusChanged);
+        _server = server;
+
+        AppendEntry(new ConsoleEntry(
+            DateTimeOffset.Now,
+            Raw: $"— starting \"{profile.Name}\" —",
+            Message: $"— starting \"{profile.Name}\" —",
+            Level: ConsoleEntryLevel.Input));
+
+        try
+        {
+            await server.StartAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Failed to start server process");
+            await DisposeServerAsync();
+            AppendEntry(new ConsoleEntry(
+                DateTimeOffset.Now,
+                Raw: $"Failed to start: {ex.Message}",
+                Message: $"Failed to start: {ex.Message}",
+                Level: ConsoleEntryLevel.Error));
+            PublishStatus();
+            throw new InvalidOperationException($"Failed to start the server: {ex.Message}", ex);
+        }
+    }
+
+    public async Task StopAsync(CancellationToken ct = default)
+    {
+        if (_server is null) return;
+        await _server.StopAsync(ct);
+    }
+
+    public async Task RestartAsync(CancellationToken ct = default)
+    {
+        var profile = ActiveProfile ?? throw new InvalidOperationException("No server has been started yet.");
+        await StopAsync(ct);
+        await Task.Delay(TimeSpan.FromSeconds(3), ct);
+        await StartAsync(profile, ct);
+    }
+
+    public async Task SendCommandAsync(string command, CancellationToken ct = default)
+    {
+        var cmd = command.Trim();
+        if (cmd.Length == 0) return;
+
+        AppendEntry(new ConsoleEntry(
+            DateTimeOffset.Now, Raw: $"> {cmd}", Message: $"> {cmd}", Level: ConsoleEntryLevel.Input));
+
+        if (_server is null || Status is not (ServerStatus.Running or ServerStatus.Starting))
+        {
+            AppendEntry(new ConsoleEntry(
+                DateTimeOffset.Now, Raw: "No server running.", Message: "No server running.",
+                Level: ConsoleEntryLevel.Error));
+            return;
+        }
+
+        await _server.SendCommandAsync(cmd.StartsWith('/') ? cmd[1..] : cmd, ct);
+    }
+
+    public void AcceptEula()
+    {
+        var profile = ActiveProfile ?? throw new InvalidOperationException("No server has been started yet.");
+        var eulaPath = Path.Combine(profile.WorkingDirectory, "eula.txt");
+        File.WriteAllText(eulaPath, $"# Accepted via CraftConsole {DateTimeOffset.Now:u}\neula=true\n");
+        lock (_lock) _eulaRequired = false;
+        PublishStatus();
+    }
+
+    // ── Snapshots for REST endpoints ──────────────────────────────────────
+
+    public object StatusSnapshot()
+    {
+        lock (_lock)
+        {
+            return new
+            {
+                Status,
+                Version = _serverVersion,
+                StartedAt,
+                UptimeSeconds = StartedAt is { } s ? (long)(DateTimeOffset.UtcNow - s).TotalSeconds : 0,
+                PlayerCount = _players.Count,
+                MaxPlayers = _maxPlayers,
+                EulaRequired = _eulaRequired,
+                Profile = ActiveProfile,
+            };
+        }
+    }
+
+    public List<ConsoleEntry> ConsoleSnapshot()
+    {
+        lock (_lock) return [.. _console];
+    }
+
+    public void ClearConsole()
+    {
+        lock (_lock) _console.Clear();
+        _broker.Publish("console-cleared", new { });
+    }
+
+    public List<object> PlayersSnapshot()
+    {
+        lock (_lock) return [.. _players.Select(PlayerDto)];
+    }
+
+    public List<IssueEntry> IssuesSnapshot()
+    {
+        lock (_lock) return [.. _issues];
+    }
+
+    public void ClearIssues()
+    {
+        lock (_lock)
+        {
+            _issues.Clear();
+            _nextIssueId = 1;
+        }
+        _broker.Publish("issues-cleared", new { });
+    }
+
+    /// <summary>Development helper: push a raw line through the same pipeline as real output.</summary>
+    public void SimulateOutput(string rawLine) => OnConsoleEntry(ConsoleOutputParser.Parse(rawLine));
+
+    // ── Console pipeline ──────────────────────────────────────────────────
+
+    private void OnConsoleEntry(ConsoleEntry entry)
+    {
+        AppendEntry(entry);
+
+        if (VersionPattern().Match(entry.Message) is { Success: true } vm)
+        {
+            lock (_lock) _serverVersion = vm.Groups["ver"].Value;
+            PublishStatus();
+        }
+
+        if (entry.Message.Contains("agree to the EULA", StringComparison.OrdinalIgnoreCase))
+        {
+            lock (_lock) _eulaRequired = true;
+            PublishStatus();
+        }
+
+        if (ClassifyIssue(entry) is { } issueType)
+        {
+            IssueEntry issue;
+            lock (_lock)
+            {
+                issue = new IssueEntry
+                {
+                    Id = _nextIssueId++,
+                    Type = issueType,
+                    Timestamp = entry.Timestamp,
+                    Message = entry.Message,
+                };
+                _issues.Add(issue);
+                if (_issues.Count > 500) _issues.RemoveAt(0);
+            }
+            _broker.Publish("issue", issue);
+        }
+
+        if (ServerEventParser.TryParse(entry) is { } evt)
+        {
+            HandleGameEvent(evt);
+            GameEvent?.Invoke(evt);
+        }
+    }
+
+    private void AppendEntry(ConsoleEntry entry)
+    {
+        lock (_lock)
+        {
+            _console.Add(entry);
+            var max = Math.Max(100, _settings.Current.MaxConsoleLines);
+            if (_console.Count > max)
+                _console.RemoveRange(0, _console.Count - max);
+        }
+        _broker.Publish("console", entry);
+    }
+
+    private void HandleGameEvent(ServerEvent evt)
+    {
+        switch (evt)
+        {
+            case PlayerJoinedEvent joined:
+                Player? geoTarget = null;
+                lock (_lock)
+                {
+                    var existing = _players.FirstOrDefault(p => p.Username == joined.Player.Username);
+                    if (existing is not null)
+                    {
+                        // "logged in" may arrive after "joined the game" — patch IP if now known
+                        if (existing.IpAddress is null && joined.Player.IpAddress is not null)
+                        {
+                            existing.IpAddress = joined.Player.IpAddress;
+                            geoTarget = existing;
+                        }
+                    }
+                    else
+                    {
+                        _players.Add(joined.Player);
+                        geoTarget = joined.Player;
+                    }
+                }
+                if (geoTarget is not null) _ = ResolveLocationAsync(geoTarget);
+                PublishPlayers();
+                break;
+
+            case PlayerLeftEvent left:
+                lock (_lock)
+                {
+                    var player = _players.FirstOrDefault(p => p.Username == left.Username);
+                    if (player is not null)
+                    {
+                        player.LastSeen = DateTimeOffset.UtcNow;
+                        _players.Remove(player);
+                    }
+                }
+                PublishPlayers();
+                break;
+        }
+    }
+
+    private void OnStatusChanged(ServerStatus status)
+    {
+        if (status == ServerStatus.Running)
+            _startedAt = DateTimeOffset.UtcNow;
+
+        if (status is ServerStatus.Stopped or ServerStatus.Crashed)
+        {
+            lock (_lock) _players.Clear();
+            PublishPlayers();
+        }
+
+        PublishStatus();
+    }
+
+    private void PublishStatus() => _broker.Publish("status", StatusSnapshot());
+    private void PublishPlayers() => _broker.Publish("players", new { Players = PlayersSnapshot() });
+
+    private object PlayerDto(Player p) => new
+    {
+        p.Username,
+        p.IpAddress,
+        p.JoinedAt,
+        p.Location,
+        ColorHex = UsernameColor.GetHex(p.Username),
+    };
+
+    private static IssueType? ClassifyIssue(ConsoleEntry entry) => entry.Level switch
+    {
+        ConsoleEntryLevel.Warn => IssueType.Warning,
+        ConsoleEntryLevel.Error => IssueType.Severe,
+        ConsoleEntryLevel.Info when entry.Message.Contains("Can't keep up") => IssueType.Warning,
+        ConsoleEntryLevel.Info when entry.Message.Contains("overloaded") => IssueType.Warning,
+        ConsoleEntryLevel.Info when entry.Message.Contains("Exception") => IssueType.Severe,
+        _ => null,
+    };
+
+    // ── Geo lookup (ipinfo.io, best-effort) ───────────────────────────────
+
+    private async Task ResolveLocationAsync(Player player)
+    {
+        var ip = player.IpAddress;
+        if (ip is null) return;
+
+        if (IsPrivateAddress(ip))
+        {
+            player.Location = "Local network";
+            PublishPlayers();
+            return;
+        }
+
+        lock (_lock)
+        {
+            if (_geoCache.TryGetValue(ip, out var cached))
+            {
+                player.Location = cached;
+                return;
+            }
+        }
+
+        try
+        {
+            var json = await _http.GetStringAsync($"https://ipinfo.io/{ip}/json");
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var city = root.TryGetProperty("city", out var c) ? c.GetString() : null;
+            var region = root.TryGetProperty("region", out var r) ? r.GetString() : null;
+            var country = root.TryGetProperty("country", out var n) ? n.GetString() : null;
+            var parts = new[] { city, region, country }.Where(s => !string.IsNullOrEmpty(s));
+            var location = string.Join(", ", parts) is { Length: > 0 } loc ? loc : "—";
+
+            lock (_lock) _geoCache[ip] = location;
+            player.Location = location;
+            PublishPlayers();
+        }
+        catch { /* network unavailable — location stays unknown */ }
+    }
+
+    private static bool IsPrivateAddress(string ip)
+        => ip is "127.0.0.1" or "::1" or "0:0:0:0:0:0:0:1"
+           || ip.StartsWith("192.168.") || ip.StartsWith("10.")
+           || ip.StartsWith("172.16.") || ip.StartsWith("172.17.")
+           || ip.StartsWith("172.18.") || ip.StartsWith("172.19.")
+           || ip.StartsWith("172.2") || ip.StartsWith("172.30.") || ip.StartsWith("172.31.")
+           || ip.StartsWith("fe80:") || ip.StartsWith("fd");
+
+    // ── server.properties helpers ─────────────────────────────────────────
+
+    private static int ReadMaxPlayers(string workingDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(workingDirectory, "server.properties");
+            if (!File.Exists(path)) return 20;
+            foreach (var line in File.ReadLines(path))
+            {
+                if (line.StartsWith("max-players=", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(line["max-players=".Length..].Trim(), out var max) && max > 0)
+                    return max;
+            }
+        }
+        catch { /* unreadable — keep default */ }
+        return 20;
+    }
+
+    // ── Disposal ──────────────────────────────────────────────────────────
+
+    private async Task DisposeServerAsync()
+    {
+        _consoleSub?.Dispose();
+        _statusSub?.Dispose();
+        _consoleSub = null;
+        _statusSub = null;
+
+        if (_server is not null)
+        {
+            await _server.DisposeAsync();
+            _server = null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Status is ServerStatus.Running or ServerStatus.Starting)
+        {
+            try { await StopAsync(); }
+            catch { /* best-effort graceful stop on shutdown */ }
+        }
+        await DisposeServerAsync();
+    }
+}

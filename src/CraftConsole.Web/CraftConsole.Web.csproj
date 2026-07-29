@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CraftConsole</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Machine CPU/RAM gauges on the dashboard (Windows; graceful fallback elsewhere) -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CraftConsole.Core\CraftConsole.Core.csproj" />
+    <ProjectReference Include="..\CraftConsole.Infrastructure\CraftConsole.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

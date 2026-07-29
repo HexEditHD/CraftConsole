@@ -6,6 +6,7 @@ public interface IMinecraftServer
 {
     ServerProfile Profile { get; }
     ServerStatus Status { get; }
+    int? ProcessId { get; }
 
     Task StartAsync(CancellationToken ct = default);
     Task StopAsync(CancellationToken ct = default);

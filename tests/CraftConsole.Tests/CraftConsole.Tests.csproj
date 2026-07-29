@@ -18,7 +18,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CraftConsole\CraftConsole.csproj" />
+    <ProjectReference Include="..\..\src\CraftConsole.Core\CraftConsole.Core.csproj" />
+    <ProjectReference Include="..\..\src\CraftConsole.Infrastructure\CraftConsole.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\CraftConsole.Web\CraftConsole.Web.csproj" />
   </ItemGroup>
 
 </Project>

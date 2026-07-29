@@ -33,7 +33,7 @@ jobs:
       - name: Publish (win-x64, self-contained, single file)
         shell: pwsh
         run: |
-          dotnet publish src/CraftConsole/CraftConsole.csproj `
+          dotnet publish src/CraftConsole.Web/CraftConsole.Web.csproj `
             --configuration Release `
             --runtime win-x64 `
             --self-contained true `
