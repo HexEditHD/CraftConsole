@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- This repo pins package versions per-project (no Central Package Management).
+         When this checkout is nested inside another checkout that DOES use CPM
+         (e.g. a git worktree under .claude/worktrees), MSBuild/NuGet would otherwise
+         walk up and inherit the parent's Directory.Packages.props, breaking restore
+         with NU1008. This file stops the upward search and disables that import. -->
+    <ImportDirectoryPackagesProps>false</ImportDirectoryPackagesProps>
+  </PropertyGroup>
+
+</Project>
