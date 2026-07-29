@@ -1,5 +1,5 @@
 // Backups: job definitions + on-demand runs (zips sources to a destination).
-import { h, icon, toast, confirmDialog, modal, timeAgo } from '../ui.js';
+import { h, icon, toast, confirmDialog, modal, timeAgo, fmtSize } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
@@ -52,6 +52,10 @@ export default {
               class: 'btn sm primary', disabled: isRunning,
               onclick: () => run(job),
             }, isRunning ? h('span', { class: 'spinner' }) : icon('play'), isRunning ? 'Running…' : 'Run now'),
+            h('button', {
+              class: 'btn sm', title: 'Restore an archive from this job',
+              onclick: () => openRestore(job),
+            }, icon('archive'), 'Restore'),
             h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')),
             h('button', {
               class: 'btn sm icon-only danger', title: 'Delete',
@@ -73,6 +77,86 @@ export default {
         running.delete(job.id);
         build();
       }
+    }
+
+    async function openRestore(job) {
+      const serverStopped = ['Stopped', 'Crashed'].includes(state.status?.status ?? 'Stopped');
+
+      let archives = [];
+      try { archives = (await api.get(`/api/backups/${job.id}/archives`)).archives ?? []; }
+      catch (err) { toast(err.message, 'err'); return; }
+
+      if (!archives.length) {
+        modal({
+          title: `Restore from “${job.name}”`,
+          body: h('div', { class: 'empty' },
+            icon('archive'),
+            h('div', { class: 'empty-title' }, 'No archives yet'),
+            h('div', { class: 'empty-sub' },
+              `Nothing found in ${job.destinationPath}. Run the job first to create one.`)),
+          actions: [{ label: 'Close', kind: 'ghost' }],
+        });
+        return;
+      }
+
+      const select = h('select', { class: 'select' },
+        archives.map(a => h('option', { value: a.fileName },
+          `${a.fileName}  —  ${fmtSize(a.sizeBytes)}, ${timeAgo(a.createdAt)}`)));
+
+      const target = h('input', {
+        class: 'input',
+        value: state.status?.profile?.workingDirectory ?? '',
+        placeholder: 'Directory to extract into',
+      });
+
+      modal({
+        title: `Restore from “${job.name}”`,
+        wide: true,
+        body: h('div', {},
+          !serverStopped
+            ? h('div', {
+                class: 'banner',
+                style: { margin: '0 0 14px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(251,191,36,.35)' },
+              },
+                icon('alert'),
+                h('span', {}, 'Stop the server first. Restoring over a running world would be overwritten by the next autosave.'))
+            : null,
+          h('div', { class: 'field' }, h('label', {}, 'Archive'), select),
+          h('div', { class: 'field' },
+            h('label', {}, 'Restore into'), target,
+            h('span', { class: 'hint' },
+              'Files in the archive overwrite files of the same name. Anything else in the directory is left untouched.')),
+          h('p', { class: 'muted small' },
+            'Consider running this job once before restoring, so the current state is recoverable.')),
+        actions: [
+          { label: 'Cancel', kind: 'ghost' },
+          {
+            label: 'Restore',
+            kind: 'danger',
+            onClick: async () => {
+              if (!serverStopped) { toast('Stop the server before restoring.', 'err'); return false; }
+              if (!target.value.trim()) { toast('A target directory is required.', 'err'); return false; }
+
+              const archive = select.value;
+              if (!await confirmDialog(
+                'Confirm restore',
+                `Extract “${archive}” into ${target.value.trim()}? Files with matching names will be overwritten.`,
+                { danger: true, okLabel: 'Restore' })) return false;
+
+              try {
+                await api.post(`/api/backups/${job.id}/restore`, {
+                  archive,
+                  targetDirectory: target.value.trim(),
+                });
+                toast(`Restored ${archive}`);
+              } catch (err) {
+                toast(err.message, 'err');
+                return false; // keep the dialog open so the choice isn't lost
+              }
+            },
+          },
+        ],
+      });
     }
 
     function openEditor(job) {

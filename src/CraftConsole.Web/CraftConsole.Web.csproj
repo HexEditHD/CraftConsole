@@ -63,4 +63,10 @@
     <ProjectReference Include="..\CraftConsole.Infrastructure\CraftConsole.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Lets the tests reach security-relevant helpers that should not be public:
+         the archive extractor's containment check and the editor's path jail. -->
+    <InternalsVisibleTo Include="CraftConsole.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -59,7 +59,14 @@ export function modal({ title, body, actions = [], wide = false, onClose }) {
         ? h('div', { class: 'modal-foot' },
             ...actions.map(a => h('button', {
               class: `btn ${a.kind ?? ''}`,
-              onclick: () => { if (a.onClick?.(close) !== false && a.autoClose !== false) close(); },
+              // Awaited so an async handler can keep the dialog open by
+              // returning false. Without this an async handler returns a
+              // Promise, which is never === false, and the dialog closed
+              // before the work it started had finished or failed.
+              onclick: async () => {
+                const result = await a.onClick?.(close);
+                if (result !== false && a.autoClose !== false) close();
+              },
             }, a.label)))
         : null));
 
