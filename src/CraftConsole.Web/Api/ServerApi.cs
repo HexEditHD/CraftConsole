@@ -71,11 +71,11 @@ public static class ServerApi
             return Results.NoContent();
         });
 
-        app.MapPost("/api/server/eula/accept", (ServerSupervisor sup) =>
+        app.MapPost("/api/server/eula/accept", async (ServerSupervisor sup) =>
         {
             try
             {
-                sup.AcceptEula();
+                await sup.AcceptEulaAsync();
                 return Results.Ok(sup.StatusSnapshot());
             }
             catch (InvalidOperationException ex)

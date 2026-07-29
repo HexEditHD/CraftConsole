@@ -21,10 +21,15 @@ public sealed class MetricsSampler : BackgroundService
 
     public object? Latest { get; private set; }
 
+    private readonly LinuxMachineMetrics? _linux;
+
     public MetricsSampler(ServerSupervisor supervisor, EventBroker broker)
     {
         _supervisor = supervisor;
         _broker = broker;
+
+        if (LinuxMachineMetrics.IsSupported)
+            _linux = new LinuxMachineMetrics();
 
         if (OperatingSystem.IsWindows())
         {
@@ -60,16 +65,9 @@ public sealed class MetricsSampler : BackgroundService
     private object Sample()
     {
         // ── Machine ──
-        double machineCpu = 0, availMb = 0;
-        if (OperatingSystem.IsWindows())
-        {
-            try { machineCpu = Math.Round(_machineCpu?.NextValue() ?? 0, 1); } catch { }
-            try { availMb = _machineRam?.NextValue() ?? 0; } catch { }
-        }
-
-        var totalGb = Math.Round((double)GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024 / 1024, 2);
-        var usedGb = availMb > 0 ? Math.Round(totalGb - availMb / 1024.0, 2) : 0;
-        var machineRamPct = totalGb > 0 && usedGb > 0 ? Math.Round(usedGb / totalGb * 100, 1) : 0;
+        // Null (not zero) where the platform can't report a figure, so the dashboard
+        // can say "unavailable" instead of drawing a permanently idle machine.
+        var machine = SampleMachine();
 
         // ── Server process ──
         double serverCpu = 0, serverRamMb = 0;
@@ -106,10 +104,10 @@ public sealed class MetricsSampler : BackgroundService
         var startedAt = _supervisor.StartedAt;
         return new
         {
-            MachineCpuPercent = machineCpu,
-            MachineRamUsedGb = usedGb,
-            MachineRamTotalGb = totalGb,
-            MachineRamPercent = machineRamPct,
+            MachineCpuPercent = machine.CpuPercent,
+            MachineRamUsedGb = machine.RamUsedGb,
+            MachineRamTotalGb = machine.RamTotalGb,
+            MachineRamPercent = machine.RamPercent,
             ServerCpuPercent = serverCpu,
             ServerRamMb = serverRamMb,
             ServerRamMaxMb = _supervisor.ActiveProfile?.MaxRamMb ?? 0,
@@ -117,6 +115,29 @@ public sealed class MetricsSampler : BackgroundService
             Status = _supervisor.Status,
             PlayerCount = _supervisor.PlayersSnapshot().Count,
         };
+    }
+
+    private MachineSample SampleMachine()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            double? cpu = null, availMb = null;
+            try { if (_machineCpu is not null) cpu = Math.Round(_machineCpu.NextValue(), 1); } catch { }
+            try { if (_machineRam is not null) availMb = _machineRam.NextValue(); } catch { }
+
+            // TotalAvailableMemoryBytes is the GC's view, which honours container and
+            // heap-limit configuration — close enough to physical RAM for a gauge.
+            var totalGb = Math.Round(
+                (double)GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024 / 1024, 2);
+
+            double? usedGb = availMb is { } avail && totalGb > 0
+                ? Math.Round(totalGb - avail / 1024.0, 2)
+                : null;
+
+            return new MachineSample(cpu, usedGb, usedGb is null ? null : totalGb);
+        }
+
+        return _linux?.Sample() ?? MachineSample.Unavailable;
     }
 
     public override void Dispose()

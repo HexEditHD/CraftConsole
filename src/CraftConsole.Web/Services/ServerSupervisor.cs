@@ -21,6 +21,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly ILogger<ServerSupervisor> _log;
 
     private readonly object _lock = new();
+
+    // Serialises the whole start path. The status guard and the _server assignment
+    // used to sit outside any lock, so two concurrent POSTs to /api/server/start
+    // could both pass the guard and launch a second JVM, orphaning the first.
+    private readonly SemaphoreSlim _startGate = new(1, 1);
+
     private readonly List<ConsoleEntry> _console = [];
     private readonly List<Player> _players = [];
     private readonly List<IssueEntry> _issues = [];
@@ -60,47 +66,60 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     public async Task StartAsync(ServerProfile profile, CancellationToken ct = default)
     {
-        if (Status is ServerStatus.Running or ServerStatus.Starting)
-            throw new InvalidOperationException("The server is already running.");
-
-        await DisposeServerAsync();
-
-        lock (_lock)
-        {
-            _players.Clear();
-            _eulaRequired = false;
-            _serverVersion = "";
-        }
-
-        _maxPlayers = ReadMaxPlayers(profile.WorkingDirectory);
-        ActiveProfile = profile;
-
-        var server = new ServerProcessManager(profile);
-        _consoleSub = server.ConsoleOutput.Subscribe(OnConsoleEntry);
-        _statusSub = server.StatusChanged.Subscribe(OnStatusChanged);
-        _server = server;
-
-        AppendEntry(new ConsoleEntry(
-            DateTimeOffset.Now,
-            Raw: $"— starting \"{profile.Name}\" —",
-            Message: $"— starting \"{profile.Name}\" —",
-            Level: ConsoleEntryLevel.Input));
-
+        await _startGate.WaitAsync(ct);
         try
         {
-            await server.StartAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(ex, "Failed to start server process");
+            if (Status is ServerStatus.Running or ServerStatus.Starting)
+                throw new InvalidOperationException("The server is already running.");
+
             await DisposeServerAsync();
+
+            lock (_lock)
+            {
+                _players.Clear();
+                _eulaRequired = false;
+                _serverVersion = "";
+            }
+
+            _maxPlayers = ReadMaxPlayers(profile.WorkingDirectory);
+            ActiveProfile = profile;
+
+            // A previous run may have left eula=false on disk; re-check up front so
+            // the banner is accurate before the server has logged anything.
+            if (!IsEulaAccepted(profile.WorkingDirectory))
+                lock (_lock) _eulaRequired = true;
+
+            var server = new ServerProcessManager(profile);
+            _consoleSub = server.ConsoleOutput.Subscribe(OnConsoleEntry);
+            _statusSub = server.StatusChanged.Subscribe(OnStatusChanged);
+            _server = server;
+
             AppendEntry(new ConsoleEntry(
                 DateTimeOffset.Now,
-                Raw: $"Failed to start: {ex.Message}",
-                Message: $"Failed to start: {ex.Message}",
-                Level: ConsoleEntryLevel.Error));
-            PublishStatus();
-            throw new InvalidOperationException($"Failed to start the server: {ex.Message}", ex);
+                Raw: $"— starting \"{profile.Name}\" —",
+                Message: $"— starting \"{profile.Name}\" —",
+                Level: ConsoleEntryLevel.Input));
+
+            try
+            {
+                await server.StartAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to start server process");
+                await DisposeServerAsync();
+                AppendEntry(new ConsoleEntry(
+                    DateTimeOffset.Now,
+                    Raw: $"Failed to start: {ex.Message}",
+                    Message: $"Failed to start: {ex.Message}",
+                    Level: ConsoleEntryLevel.Error));
+                PublishStatus();
+                throw new InvalidOperationException($"Failed to start the server: {ex.Message}", ex);
+            }
+        }
+        finally
+        {
+            _startGate.Release();
         }
     }
 
@@ -137,13 +156,66 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         await _server.SendCommandAsync(cmd.StartsWith('/') ? cmd[1..] : cmd, ct);
     }
 
-    public void AcceptEula()
+    public async Task AcceptEulaAsync(CancellationToken ct = default)
     {
         var profile = ActiveProfile ?? throw new InvalidOperationException("No server has been started yet.");
         var eulaPath = Path.Combine(profile.WorkingDirectory, "eula.txt");
-        File.WriteAllText(eulaPath, $"# Accepted via CraftConsole {DateTimeOffset.Now:u}\neula=true\n");
+
+        try
+        {
+            // Rewrite only the eula= line so Mojang's boilerplate and the EULA link
+            // survive; the previous version replaced the whole file.
+            string[] lines = File.Exists(eulaPath)
+                ? await File.ReadAllLinesAsync(eulaPath, ct)
+                : [
+                    "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).",
+                  ];
+
+            var rewritten = false;
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (!lines[i].TrimStart().StartsWith("eula=", StringComparison.OrdinalIgnoreCase)) continue;
+                lines[i] = "eula=true";
+                rewritten = true;
+                break;
+            }
+
+            if (!rewritten)
+                lines = [.. lines, $"#Accepted via CraftConsole {DateTimeOffset.Now:u}", "eula=true"];
+
+            await File.WriteAllLinesAsync(eulaPath, lines, ct);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Previously this propagated as an unhandled 500.
+            _log.LogError(ex, "Could not write eula.txt at {Path}", eulaPath);
+            throw new InvalidOperationException(
+                $"Could not write eula.txt in \"{profile.WorkingDirectory}\": {ex.Message}", ex);
+        }
+
         lock (_lock) _eulaRequired = false;
         PublishStatus();
+    }
+
+    /// <summary>Reads eula.txt directly. Absent or eula=false both mean "not accepted".</summary>
+    private static bool IsEulaAccepted(string workingDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(workingDirectory, "eula.txt");
+            if (!File.Exists(path)) return false;
+
+            foreach (var line in File.ReadLines(path))
+            {
+                var trimmed = line.TrimStart();
+                if (!trimmed.StartsWith("eula=", StringComparison.OrdinalIgnoreCase)) continue;
+                return trimmed["eula=".Length..].Trim()
+                    .Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch { /* unreadable — treat as not accepted */ }
+
+        return false;
     }
 
     // ── Snapshots for REST endpoints ──────────────────────────────────────
@@ -212,7 +284,15 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             PublishStatus();
         }
 
-        if (entry.Message.Contains("agree to the EULA", StringComparison.OrdinalIgnoreCase))
+        // Only trust the server's own output, never a player's. This matched any line,
+        // so "<Steve> we should agree to the EULA" in chat raised the banner — and the
+        // dev simulate endpoint could too. Chat and panel-echoed input are excluded,
+        // and the claim is corroborated against eula.txt on disk.
+        if (entry.Level is not ConsoleEntryLevel.Input
+            && ServerEventParser.TryParse(entry) is not PlayerChatEvent
+            && entry.Message.Contains("agree to the EULA", StringComparison.OrdinalIgnoreCase)
+            && ActiveProfile is { } eulaProfile
+            && !IsEulaAccepted(eulaProfile.WorkingDirectory))
         {
             lock (_lock) _eulaRequired = true;
             PublishStatus();

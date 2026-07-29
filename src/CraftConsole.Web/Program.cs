@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using CraftConsole.Infrastructure.Http;
+using CraftConsole.Infrastructure.Logging;
 using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,8 +17,17 @@ if (builder.Configuration["urls"] is null
     builder.WebHost.UseUrls("http://127.0.0.1:5178");
 }
 
-var appDataPath = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CraftConsole");
+// --data-dir → CRAFTCONSOLE_DATA → per-user OS default. Created eagerly so a
+// permissions problem surfaces at startup rather than on the first write.
+var appDataPath = DataPath.Resolve(args);
+Directory.CreateDirectory(appDataPath);
+
+// Route the standard ILogger pipeline through Serilog so it also lands in
+// {dataDir}/logs. Without this there is no on-disk trace at all — useful when
+// the panel runs headless as a service.
+var serilog = AppLogger.Create(appDataPath, builder.Environment.IsDevelopment());
+builder.Logging.ClearProviders();
+builder.Logging.AddSerilog(serilog, dispose: true);
 
 builder.Services.AddSingleton(new SettingsHolder(appDataPath));
 builder.Services.AddSingleton<AuthService>();

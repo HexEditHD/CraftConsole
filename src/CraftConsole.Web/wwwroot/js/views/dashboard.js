@@ -5,6 +5,20 @@ import { on } from '../bus.js';
 import { state } from '../store.js';
 import { sparkline, gauge, thresholdColor } from '../charts.js';
 
+/** Placeholder for a metric this platform cannot report (e.g. machine CPU off Windows/Linux). */
+function unavailableGauge(label) {
+  return h('div', { class: 'gauge-box' },
+    h('div', {
+      style: {
+        width: '118px', height: '118px', borderRadius: '50%',
+        border: '2px dashed var(--border-strong)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-3)', fontSize: '11.5px', textAlign: 'center', padding: '0 14px',
+      },
+    }, 'Not available'),
+    h('div', { class: 'gauge-caption' }, label));
+}
+
 export default {
   id: 'dashboard',
   title: 'Dashboard',
@@ -112,18 +126,27 @@ export default {
       els.ramSpark.innerHTML = '';
       els.ramSpark.append(sparkline(hist.map(x => x.serverRamMb ?? 0), { max: ramMax || null }));
 
-      // Machine gauges
+      // Machine gauges. null means the platform can't report the figure — show it
+      // as unavailable rather than as a gauge pinned at zero, which reads as idle.
       els.gauges.innerHTML = '';
-      const cpuPct = m?.machineCpuPercent ?? 0;
-      const ramPct = m?.machineRamPercent ?? 0;
+      const cpuPct = m?.machineCpuPercent;
+      const ramPct = m?.machineRamPercent;
+
       els.gauges.append(
-        h('div', { class: 'gauge-box' },
-          gauge(cpuPct, { label: 'CPU' }),
-          h('div', { class: 'gauge-detail', style: { color: thresholdColor(cpuPct) } }, `${cpuPct.toFixed(0)}% in use`)),
-        h('div', { class: 'gauge-box' },
-          gauge(ramPct, { label: 'Memory' }),
-          h('div', { class: 'gauge-detail' },
-            m ? `${m.machineRamUsedGb.toFixed(1)} / ${m.machineRamTotalGb.toFixed(1)} GB` : '—')));
+        cpuPct == null
+          ? unavailableGauge('CPU')
+          : h('div', { class: 'gauge-box' },
+              gauge(cpuPct, { label: 'CPU' }),
+              h('div', { class: 'gauge-detail', style: { color: thresholdColor(cpuPct) } },
+                `${cpuPct.toFixed(0)}% in use`)),
+        ramPct == null
+          ? unavailableGauge('Memory')
+          : h('div', { class: 'gauge-box' },
+              gauge(ramPct, { label: 'Memory' }),
+              h('div', { class: 'gauge-detail' },
+                m.machineRamUsedGb != null && m.machineRamTotalGb != null
+                  ? `${m.machineRamUsedGb.toFixed(1)} / ${m.machineRamTotalGb.toFixed(1)} GB`
+                  : '—')));
     };
 
     const syncIssues = () => {
