@@ -12,9 +12,9 @@ export default {
 
   render(el) {
     let tab = 'online';
-    let banned = [];
-    let bannedIps = [];
-    let whitelist = { entries: [], enabled: false };
+    let banned = { available: true, reason: null, entries: [] };
+    let bannedIps = { available: true, reason: null, entries: [] };
+    let whitelist = { available: true, reason: null, entries: [], enabled: false };
 
     const tabs = h('div', { class: 'tabs' });
     const body = h('div');
@@ -30,8 +30,8 @@ export default {
     const tabCount = id => ({
       online: state.players.length,
       whitelist: whitelist.entries.length,
-      banned: banned.length,
-      'banned-ips': bannedIps.length,
+      banned: banned.entries.length,
+      'banned-ips': bannedIps.entries.length,
     })[id] ?? 0;
 
     function buildTabs() {
@@ -51,9 +51,9 @@ export default {
         api.get('/api/players/banned-ips'),
         api.get('/api/players/whitelist'),
       ]);
-      banned = b.status === 'fulfilled' ? b.value : [];
-      bannedIps = ips.status === 'fulfilled' ? ips.value : [];
-      whitelist = wl.status === 'fulfilled' ? wl.value : { entries: [], enabled: false };
+      banned = b.status === 'fulfilled' ? b.value : { available: true, reason: null, entries: [] };
+      bannedIps = ips.status === 'fulfilled' ? ips.value : { available: true, reason: null, entries: [] };
+      whitelist = wl.status === 'fulfilled' ? wl.value : { available: true, reason: null, entries: [], enabled: false };
       buildTabs();
       if (tab !== 'online') buildBody();
     }
@@ -115,7 +115,12 @@ export default {
             h('td', {}, h('div', { class: 'actions' },
               h('button', { class: 'btn sm', onclick: () => act('kick', p.username, true, 'Kick reason (optional)') }, icon('userX'), 'Kick'),
               h('button', { class: 'btn sm danger', onclick: () => act('ban', p.username, true, 'Ban reason (optional)') }, icon('ban'), 'Ban'),
-              h('button', { class: 'btn sm danger', title: 'Ban this player’s IP address', onclick: () => act('ban-ip', p.ipAddress ?? p.username, true, 'Ban-IP reason (optional)') }, 'Ban IP')))))))));
+              h('button', {
+                class: 'btn sm danger',
+                title: p.ipAddress ? 'Ban this player’s IP address' : 'IP address unknown for this connection',
+                disabled: !p.ipAddress,
+                onclick: () => act('ban-ip', p.ipAddress, true, 'Ban-IP reason (optional)'),
+              }, 'Ban IP')))))))));
         return;
       }
 
@@ -164,6 +169,11 @@ export default {
                 'Start the server to change the whitelist — changes go through it so whitelist.json stays in sync.')
             : null));
 
+        if (!whitelist.available) {
+          body.append(emptyState('info', 'List not shown', whitelist.reason));
+          return;
+        }
+
         if (!whitelist.entries.length) {
           body.append(emptyState('users', 'Whitelist is empty',
             'Add players above. With enforcement on and an empty list, nobody can join.'));
@@ -190,7 +200,11 @@ export default {
       }
 
       if (tab === 'banned') {
-        if (!banned.length) {
+        if (!banned.available) {
+          body.append(emptyState('info', 'Not available', banned.reason));
+          return;
+        }
+        if (!banned.entries.length) {
           body.append(emptyState('check', 'No banned players', 'Bans issued from the console or this panel show up here.'));
           return;
         }
@@ -198,7 +212,7 @@ export default {
           h('thead', {}, h('tr', {},
             h('th', {}, 'Player'), h('th', {}, 'Reason'), h('th', {}, 'Source'),
             h('th', {}, 'Created'), h('th', {}))),
-          h('tbody', {}, banned.map(b => h('tr', {},
+          h('tbody', {}, banned.entries.map(b => h('tr', {},
             h('td', {}, avatarCell(b.name, 'var(--surface-3)')),
             h('td', { class: 'text-2' }, b.reason || '—'),
             h('td', { class: 'muted' }, b.source || '—'),
@@ -209,7 +223,11 @@ export default {
       }
 
       // banned-ips
-      if (!bannedIps.length) {
+      if (!bannedIps.available) {
+        body.append(emptyState('info', 'Not available', bannedIps.reason));
+        return;
+      }
+      if (!bannedIps.entries.length) {
         body.append(emptyState('check', 'No banned IPs', 'IP bans show up here.'));
         return;
       }
@@ -217,7 +235,7 @@ export default {
         h('thead', {}, h('tr', {},
           h('th', {}, 'IP address'), h('th', {}, 'Reason'), h('th', {}, 'Source'),
           h('th', {}, 'Created'), h('th', {}))),
-        h('tbody', {}, bannedIps.map(b => h('tr', {},
+        h('tbody', {}, bannedIps.entries.map(b => h('tr', {},
           h('td', { class: 'mono' }, b.ip),
           h('td', { class: 'text-2' }, b.reason || '—'),
           h('td', { class: 'muted' }, b.source || '—'),

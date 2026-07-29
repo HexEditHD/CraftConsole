@@ -82,6 +82,11 @@ export default {
       onclick: () => { scrollToBottom(); hideJump(); },
     }, icon('arrowDown'), 'New output');
 
+    // RCON has no log stream — only command replies and synthesized player
+    // join/leave — so this view is a transcript there, not a live tail.
+    const rconNotice = h('div', { class: 'hint', style: { padding: '2px 2px 10px', display: 'none' } },
+      'RCON transcript — command replies and player join/leave only, not the full server log.');
+
     const scrollToBottom = () => { log.scrollTop = log.scrollHeight; };
     const isNearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     const hideJump = () => { jumpBtn.style.display = 'none'; };
@@ -112,6 +117,7 @@ export default {
             class: 'btn sm ghost', title: 'Clear console',
             onclick: async () => { await api.del('/api/console'); },
           }, icon('eraser'), 'Clear')),
+        rconNotice,
         log,
         jumpBtn,
         h('div', { class: 'console-input-row' }, suggestBox, input, sendBtn)),
@@ -157,12 +163,19 @@ export default {
         if (matches(entry)) frag.append(lineNode(entry));
       log.append(frag);
       if (frag.childElementCount === 0 && log.childElementCount === 0 && !state.consoleEntries.length) {
+        const hasStream = state.status?.capabilities?.hasConsoleStream ?? true;
         log.append(h('div', { class: 'empty' },
           icon('terminal'),
-          h('div', { class: 'empty-title' }, 'Console is quiet'),
-          h('div', { class: 'empty-sub' }, 'Start the server to see live output here.')));
+          h('div', { class: 'empty-title' }, hasStream ? 'Console is quiet' : 'No activity yet'),
+          h('div', { class: 'empty-sub' }, hasStream
+            ? 'Start the server to see live output here.'
+            : 'Connect to this server and send a command — RCON shows replies and player activity here, not the full server log.')));
       }
       scrollToBottom();
+    }
+
+    function syncCapabilities() {
+      rconNotice.style.display = (state.status?.capabilities?.hasConsoleStream ?? true) ? 'none' : '';
     }
 
     function flushPending() {
@@ -290,6 +303,7 @@ export default {
     // ── Boot & subscriptions ─────────────────────────────────────────────
     rebuildLog();
     syncRail();
+    syncCapabilities();
     input.focus();
 
     const offs = [
@@ -299,6 +313,7 @@ export default {
       }),
       on('store:console-cleared', rebuildLog),
       on('store:players', syncRail),
+      on('store:status', syncCapabilities),
     ];
     return () => {
       offs.forEach(off => off());

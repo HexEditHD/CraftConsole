@@ -25,12 +25,14 @@ public sealed record ServerCapabilities(
         HasUptime: true, HasPlayerDetail: true);
 
     /// <summary>
-    /// A server reached over RCON. Stop is available — "stop" is just a command —
-    /// but it is one-way: there is no local process left to relaunch afterwards,
-    /// so CanRestart is false even while CanStop is true.
+    /// A server reached over RCON. CanStart stays true even when already
+    /// connected-or-attempted — Start doubles as "(re)connect" here, since RCON
+    /// has no process to hand back for a plain restart. Stop is available too —
+    /// "stop" is just a command — but it is one-way: there is no local process
+    /// left to relaunch afterwards, so CanRestart is false even while CanStop is.
     /// </summary>
     public static readonly ServerCapabilities Rcon = new(
-        CanStart: false, CanStop: true, CanRestart: false,
+        CanStart: true, CanStop: true, CanRestart: false,
         HasConsoleStream: false, HasProcessMetrics: false, HasLocalFiles: false,
         HasUptime: false, HasPlayerDetail: false);
 }

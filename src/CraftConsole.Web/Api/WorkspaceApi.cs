@@ -32,22 +32,27 @@ public static class WorkspaceApi
         // ── Plugins ───────────────────────────────────────────────────────
         app.MapGet("/api/plugins", (ServerSupervisor sup) =>
         {
+            if (sup.LocalFileUnavailableReason is { } reason)
+                return Results.Json(new { Available = false, Reason = reason, Folder = (string?)null, Plugins = new List<PluginInfo>() }, Json.Options);
+
             var folder = PluginsFolder(sup);
             if (folder is null || !Directory.Exists(folder))
-                return Results.Json(new { Folder = folder, Plugins = new List<PluginInfo>() }, Json.Options);
+                return Results.Json(new { Available = true, Reason = (string?)null, Folder = folder, Plugins = new List<PluginInfo>() }, Json.Options);
 
             var plugins = Directory.GetFiles(folder, "*.jar", SearchOption.TopDirectoryOnly)
                 .Select(TryReadPluginYaml)
                 .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            return Results.Json(new { Folder = folder, Plugins = plugins }, Json.Options);
+            return Results.Json(new { Available = true, Reason = (string?)null, Folder = folder, Plugins = plugins }, Json.Options);
         });
 
         app.MapPost("/api/plugins/{fileName}/disable", (string fileName, ServerSupervisor sup) =>
         {
-            var folder = PluginsFolder(sup);
-            if (folder is null) return Results.BadRequest(new { Message = "No server has been started yet." });
+            if (sup.LocalFileUnavailableReason is { } reason)
+                return Results.BadRequest(new { Message = reason });
+
+            var folder = PluginsFolder(sup)!; // LocalFileUnavailableReason already ruled out null here
 
             // fileName comes from the client — never allow it to escape the plugins folder
             if (!IsSafeFileName(fileName))
@@ -65,16 +70,21 @@ public static class WorkspaceApi
         // ── File editor ───────────────────────────────────────────────────
         app.MapGet("/api/files/tree", (ServerSupervisor sup) =>
         {
-            var root = sup.ActiveProfile?.WorkingDirectory;
-            if (root is null || !Directory.Exists(root))
-                return Results.Json(new { Root = root, Nodes = new List<FileNodeDto>() }, Json.Options);
+            if (sup.LocalFileUnavailableReason is { } reason)
+                return Results.Json(new { Available = false, Reason = reason, Root = (string?)null, Nodes = new List<FileNodeDto>() }, Json.Options);
+
+            var root = sup.ActiveProfile!.WorkingDirectory;
+            if (!Directory.Exists(root))
+                return Results.Json(new { Available = true, Reason = (string?)null, Root = root, Nodes = new List<FileNodeDto>() }, Json.Options);
 
             var node = BuildNode(root, root);
-            return Results.Json(new { Root = root, Nodes = node?.Children ?? [] }, Json.Options);
+            return Results.Json(new { Available = true, Reason = (string?)null, Root = root, Nodes = node?.Children ?? [] }, Json.Options);
         });
 
         app.MapGet("/api/files/content", (string path, ServerSupervisor sup) =>
         {
+            if (sup.LocalFileUnavailableReason is { } reason)
+                return Results.BadRequest(new { Message = reason });
             if (ResolveJailedPath(sup, path) is not { } fullPath)
                 return Results.BadRequest(new { Message = "Path is outside the server directory." });
             if (!EditableExtensions.Contains(Path.GetExtension(fullPath)))
@@ -88,6 +98,8 @@ public static class WorkspaceApi
 
         app.MapPut("/api/files/content", async (FileContentRequest req, ServerSupervisor sup) =>
         {
+            if (sup.LocalFileUnavailableReason is { } reason)
+                return Results.BadRequest(new { Message = reason });
             if (ResolveJailedPath(sup, req.Path) is not { } fullPath)
                 return Results.BadRequest(new { Message = "Path is outside the server directory." });
             if (!EditableExtensions.Contains(Path.GetExtension(fullPath)))

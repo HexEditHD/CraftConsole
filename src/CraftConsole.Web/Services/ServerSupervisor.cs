@@ -57,6 +57,20 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     public ServerCapabilities Capabilities =>
         ActiveProfile?.Mode == ConnectionMode.Rcon ? ServerCapabilities.Rcon : ServerCapabilities.Managed;
 
+    /// <summary>
+    /// Null when the active profile has a local server directory to read —
+    /// otherwise the reason it doesn't, for endpoints that need to explain why
+    /// (the config editor, plugins, ban/whitelist reads) rather than returning
+    /// an empty result indistinguishable from "genuinely nothing there".
+    /// </summary>
+    public string? LocalFileUnavailableReason => ActiveProfile switch
+    {
+        null => "No server has been started yet.",
+        { Mode: ConnectionMode.Rcon } =>
+            "This server is connected over RCON, which has no access to its files — only a locally launched server does.",
+        _ => null,
+    };
+
     [GeneratedRegex(@"Starting minecraft server version (?<ver>[\d.]+)")]
     private static partial Regex VersionPattern();
 
@@ -257,7 +271,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 Status,
                 Version = _serverVersion,
                 StartedAt,
-                UptimeSeconds = StartedAt is { } s ? (long)(DateTimeOffset.UtcNow - s).TotalSeconds : 0,
+                UptimeSeconds = StartedAt is { } s ? (long?)(DateTimeOffset.UtcNow - s).TotalSeconds : null,
                 PlayerCount = _players.Count,
                 // RCON learns the real cap from polling `list`; before the first
                 // successful poll (or for a managed server, always) this falls back
@@ -265,6 +279,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 MaxPlayers = _server?.MaxPlayers ?? _maxPlayers,
                 EulaRequired = _eulaRequired,
                 Profile = ActiveProfile,
+                Capabilities,
             };
         }
     }

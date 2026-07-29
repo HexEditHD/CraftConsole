@@ -46,16 +46,20 @@ export default {
       tree.append(h('div', { class: 'dl-status' }, h('span', { class: 'spinner' }), 'Loading…'));
       let data;
       try { data = await api.get('/api/files/tree'); }
-      catch { data = { nodes: [] }; }
+      catch { data = { available: true, reason: null, nodes: [] }; }
       tree.innerHTML = '';
+
+      if (!data.available) {
+        tree.append(h('div', { class: 'empty', style: { padding: '26px 10px' } },
+          icon('info'),
+          h('div', { class: 'empty-sub' }, data.reason)));
+        return;
+      }
 
       if (!data.nodes?.length) {
         tree.append(h('div', { class: 'empty', style: { padding: '26px 10px' } },
           icon('folder'),
-          h('div', { class: 'empty-sub' },
-            data.root
-              ? 'No editable files (.yml, .json, .properties, .txt, .log) found yet.'
-              : 'Start a server first — its config files will appear here.')));
+          h('div', { class: 'empty-sub' }, 'No editable files (.yml, .json, .properties, .txt, .log) found yet.')));
         return;
       }
       for (const node of data.nodes) tree.append(nodeEl(node));

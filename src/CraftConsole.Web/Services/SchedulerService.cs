@@ -210,7 +210,12 @@ public sealed class SchedulerService : BackgroundService
         }
         catch (Exception ex)
         {
+            // A task that fails (e.g. RestartServer against an RCON connection,
+            // which can't relaunch a process it never started — see
+            // ServerSupervisor.RestartAsync) used to sit there looking enabled and
+            // simply never run, with nothing but a log line no one was watching.
             _log.LogWarning(ex, "Scheduled task {Name} failed", task.Name);
+            _broker.Publish("task-failed", new { task.Id, task.Name, Message = ex.Message });
         }
     }
 

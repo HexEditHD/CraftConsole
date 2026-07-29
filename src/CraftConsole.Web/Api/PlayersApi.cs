@@ -14,11 +14,19 @@ public static class PlayersApi
         app.MapGet("/api/players", (ServerSupervisor sup) =>
             Results.Json(new { Players = sup.PlayersSnapshot() }, Json.Options));
 
-        app.MapGet("/api/players/banned", (ServerSupervisor sup) =>
-            Results.Json(ReadServerJson<BannedPlayerEntry>(sup, "banned-players.json"), Json.Options));
+        app.MapGet("/api/players/banned", (ServerSupervisor sup) => Results.Json(new
+        {
+            Available = sup.LocalFileUnavailableReason is null,
+            Reason = sup.LocalFileUnavailableReason,
+            Entries = ReadServerJson<BannedPlayerEntry>(sup, "banned-players.json"),
+        }, Json.Options));
 
-        app.MapGet("/api/players/banned-ips", (ServerSupervisor sup) =>
-            Results.Json(ReadServerJson<BannedIpEntry>(sup, "banned-ips.json"), Json.Options));
+        app.MapGet("/api/players/banned-ips", (ServerSupervisor sup) => Results.Json(new
+        {
+            Available = sup.LocalFileUnavailableReason is null,
+            Reason = sup.LocalFileUnavailableReason,
+            Entries = ReadServerJson<BannedIpEntry>(sup, "banned-ips.json"),
+        }, Json.Options));
 
         app.MapPost("/api/players/kick", (PlayerActionRequest req, ServerSupervisor sup)
             => RunPlayerCommand(sup, "kick", req.Target, req.Reason));
@@ -36,8 +44,12 @@ public static class PlayersApi
             => RunPlayerCommand(sup, "pardon-ip", req.Target, null));
 
         // ── Whitelist ─────────────────────────────────────────────────────
+        // Only the LIST is gated on local file access — add/remove/on/off/reload
+        // are plain commands below and work over RCON exactly like moderation does.
         app.MapGet("/api/players/whitelist", (ServerSupervisor sup) => Results.Json(new
         {
+            Available = sup.LocalFileUnavailableReason is null,
+            Reason = sup.LocalFileUnavailableReason,
             Entries = ReadServerJson<WhitelistEntry>(sup, "whitelist.json"),
             // white-list is the historical spelling and is still what the file uses.
             Enabled = ReadServerProperty(sup, "white-list") == "true",

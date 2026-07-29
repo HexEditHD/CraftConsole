@@ -70,7 +70,12 @@ public sealed class MetricsSampler : BackgroundService
         var machine = SampleMachine();
 
         // ── Server process ──
-        double serverCpu = 0, serverRamMb = 0;
+        // Null (not zero) when there's no local process to sample — a managed
+        // server that hasn't started yet, or an RCON connection, which never has
+        // one. The dashboard already renders "unavailable" for this shape (the
+        // machine gauges above); reporting 0 here would draw an idle server
+        // instead of an inapplicable one.
+        double? serverCpu = null, serverRamMb = null;
         var pid = _supervisor.ProcessId;
         if (pid is { } id)
         {
@@ -110,8 +115,11 @@ public sealed class MetricsSampler : BackgroundService
             MachineRamPercent = machine.RamPercent,
             ServerCpuPercent = serverCpu,
             ServerRamMb = serverRamMb,
-            ServerRamMaxMb = _supervisor.ActiveProfile?.MaxRamMb ?? 0,
-            UptimeSeconds = startedAt is { } s ? (long)(DateTimeOffset.UtcNow - s).TotalSeconds : 0,
+            // MaxRamMb is a real, configured JVM heap ceiling for a managed profile;
+            // for RCON it's just ServerProfile's unused-field default (2048) — a
+            // number that looks real but was never actually a fact about this server.
+            ServerRamMaxMb = _supervisor.Capabilities.HasProcessMetrics ? _supervisor.ActiveProfile?.MaxRamMb : null,
+            UptimeSeconds = startedAt is { } s ? (long?)(DateTimeOffset.UtcNow - s).TotalSeconds : null,
             Status = _supervisor.Status,
             PlayerCount = _supervisor.PlayersSnapshot().Count,
         };

@@ -74,7 +74,7 @@ function buildTopbar() {
     class: 'profile-chip',
     title: 'Manage server profiles',
     onclick: () => { location.hash = '#/server'; },
-  }, icon('server'), h('span', {}, 'No profile'));
+  }, icon('server'), h('span', { class: 'name' }, 'No profile'));
 
   pill = h('span', { class: 'status-pill stopped' }, 'Stopped');
 
@@ -91,19 +91,26 @@ function buildTopbar() {
 function syncTopbar() {
   const s = state.status;
   const status = s?.status ?? 'Stopped';
+  // Defaults match a managed server, so the buttons behave exactly as before
+  // until the first /api/status response actually carries capabilities.
+  const caps = s?.capabilities ?? { canStart: true, canStop: true, canRestart: true };
 
   pill.className = `status-pill ${status.toLowerCase()}`;
   pill.textContent = status;
 
   playersChip.textContent = `${state.players.length} online`;
 
-  profileChip.querySelector('span').textContent = s?.profile?.name ?? 'No profile';
+  profileChip.querySelector('span.name').textContent = s?.profile?.name ?? 'No profile';
 
   const running = status === 'Running';
   const busy = status === 'Starting' || status === 'Stopping';
-  btnStart.disabled = running || busy;
-  btnStop.disabled = !running;
-  btnRestart.disabled = !running;
+  btnStart.disabled = running || busy || !caps.canStart;
+  btnStart.title = s?.profile?.mode === 'Rcon' ? 'Connect' : '';
+  btnStop.disabled = !running || !caps.canStop;
+  btnRestart.disabled = !running || !caps.canRestart;
+  btnRestart.title = caps.canRestart
+    ? 'Restart'
+    : 'This server is connected over RCON and can’t be restarted from here';
 
   syncEulaBanner(s?.eulaRequired === true);
 }

@@ -2,6 +2,7 @@
 import { h, icon, toast, confirmDialog, modal } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
+import { state } from '../store.js';
 
 const TRIGGERS = [
   ['Interval', 'Every N seconds', 'Seconds between runs, e.g. 1800'],
@@ -33,6 +34,20 @@ function actionLabel(task) {
     case 'RestartServer': return 'restart server';
     default: return task.actionType;
   }
+}
+
+/** Why a trigger/action can't fire against the active server, or null if it's fine. */
+function unsupportedReason(value, kind) {
+  const caps = state.status?.capabilities;
+  if (!caps) return null;
+  // PlayerJoin still fires over RCON — it's polled and synthesized (see
+  // RconMinecraftServer) — but ServerReady needs the literal "Done (…)!" line
+  // from a real log stream, which RCON never has.
+  if (kind === 'trigger' && value === 'ServerReady' && !caps.hasConsoleStream)
+    return 'Needs a console stream — not available over RCON.';
+  if (kind === 'action' && value === 'RestartServer' && !caps.canRestart)
+    return 'This server is connected over RCON and can’t be restarted from here.';
+  return null;
 }
 
 export default {
@@ -71,33 +86,39 @@ export default {
         h('thead', {}, h('tr', {},
           h('th', { style: { width: '46px' } }, ''),
           h('th', {}, 'Task'), h('th', {}, 'Trigger'), h('th', {}, 'Action'), h('th', {}))),
-        h('tbody', {}, tasks.map(task => h('tr', { style: task.isEnabled ? null : { opacity: .55 } },
-          h('td', {},
-            h('label', { class: 'switch', title: task.isEnabled ? 'Enabled' : 'Disabled' },
-              h('input', {
-                type: 'checkbox', checked: task.isEnabled,
-                onchange: e => toggle(task, e.target.checked),
-              }),
-              h('span', { class: 'track' }))),
-          h('td', { style: { fontWeight: 600 } }, task.name),
-          h('td', {}, h('span', { class: 'badge info' }, triggerLabel(task))),
-          h('td', { class: 'mono small text-2' }, actionLabel(task)),
-          h('td', {}, h('div', { class: 'actions' },
-            h('button', {
-              class: 'btn sm', title: 'Run once now',
-              onclick: async () => {
-                try { await api.post(`/api/tasks/${task.id}/run`); toast(`Ran “${task.name}”`); }
-                catch (err) { toast(err.message, 'err'); }
-              },
-            }, icon('play'), 'Run'),
-            h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(task) }, icon('pencil')),
-            h('button', {
-              class: 'btn sm icon-only danger', title: 'Delete',
-              onclick: async () => {
-                if (!await confirmDialog('Delete task', `Delete “${task.name}”?`, { danger: true, okLabel: 'Delete' })) return;
-                await api.del(`/api/tasks/${task.id}`);
-              },
-            }, icon('trash'))))))))));
+        h('tbody', {}, tasks.map(task => {
+          const triggerWarn = unsupportedReason(task.triggerType, 'trigger');
+          const actionWarn = unsupportedReason(task.actionType, 'action');
+          return h('tr', { style: task.isEnabled ? null : { opacity: .55 } },
+            h('td', {},
+              h('label', { class: 'switch', title: task.isEnabled ? 'Enabled' : 'Disabled' },
+                h('input', {
+                  type: 'checkbox', checked: task.isEnabled,
+                  onchange: e => toggle(task, e.target.checked),
+                }),
+                h('span', { class: 'track' }))),
+            h('td', { style: { fontWeight: 600 } }, task.name),
+            h('td', {}, h('span', { class: 'badge info' }, triggerLabel(task)),
+              triggerWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
+            h('td', { class: 'mono small text-2' }, actionLabel(task),
+              actionWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: actionWarn }, '!') : null),
+            h('td', {}, h('div', { class: 'actions' },
+              h('button', {
+                class: 'btn sm', title: 'Run once now',
+                onclick: async () => {
+                  try { await api.post(`/api/tasks/${task.id}/run`); toast(`Ran “${task.name}”`); }
+                  catch (err) { toast(err.message, 'err'); }
+                },
+              }, icon('play'), 'Run'),
+              h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(task) }, icon('pencil')),
+              h('button', {
+                class: 'btn sm icon-only danger', title: 'Delete',
+                onclick: async () => {
+                  if (!await confirmDialog('Delete task', `Delete “${task.name}”?`, { danger: true, okLabel: 'Delete' })) return;
+                  await api.del(`/api/tasks/${task.id}`);
+                },
+              }, icon('trash')))));
+        })))));
     }
 
     async function toggle(task, enabled) {
@@ -110,10 +131,14 @@ export default {
       const f = {
         name: h('input', { class: 'input', value: task?.name ?? '' , placeholder: 'e.g. Autosave'}),
         triggerType: h('select', { class: 'select' },
-          TRIGGERS.map(([v, label]) => h('option', { value: v, selected: (task?.triggerType ?? 'Interval') === v }, label))),
+          TRIGGERS.map(([v, label]) => h('option', {
+            value: v, selected: (task?.triggerType ?? 'Interval') === v, disabled: !!unsupportedReason(v, 'trigger'),
+          }, unsupportedReason(v, 'trigger') ? `${label} (unavailable)` : label))),
         triggerValue: h('input', { class: 'input', value: task?.triggerValue ?? '' }),
         actionType: h('select', { class: 'select' },
-          ACTIONS.map(([v, label]) => h('option', { value: v, selected: (task?.actionType ?? 'SendCommand') === v }, label))),
+          ACTIONS.map(([v, label]) => h('option', {
+            value: v, selected: (task?.actionType ?? 'SendCommand') === v, disabled: !!unsupportedReason(v, 'action'),
+          }, unsupportedReason(v, 'action') ? `${label} (unavailable)` : label))),
         actionValue: h('input', { class: 'input', value: task?.actionValue ?? '' }),
       };
       const triggerHint = h('span', { class: 'hint' });
@@ -122,9 +147,9 @@ export default {
       const syncHints = () => {
         const trig = TRIGGERS.find(t => t[0] === f.triggerType.value);
         const act = ACTIONS.find(a => a[0] === f.actionType.value);
-        triggerHint.textContent = trig?.[2] ?? '';
+        triggerHint.textContent = unsupportedReason(f.triggerType.value, 'trigger') ?? trig?.[2] ?? '';
         f.triggerValue.style.display = trig?.[2] ? '' : 'none';
-        actionHint.textContent = act?.[2] ?? '';
+        actionHint.textContent = unsupportedReason(f.actionType.value, 'action') ?? act?.[2] ?? '';
         f.actionValue.style.display = act?.[2] ? '' : 'none';
       };
       f.triggerType.addEventListener('change', syncHints);
@@ -168,6 +193,8 @@ export default {
     const offs = [
       on('tasks', data => { tasks = data.tasks ?? tasks; build(); }),
       on('task-ran', evt => toast(`Task “${evt.name}” executed`)),
+      on('task-failed', evt => toast(`Task “${evt.name}” failed: ${evt.message}`, 'err')),
+      on('store:status', () => build()),
     ];
 
     load();

@@ -221,7 +221,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
 .field > label { font-size: 12px; font-weight: 600; color: var(--text-2); letter-spacing: .02em; }
-.field .hint { font-size: 11.5px; color: var(--text-3); }
+.field .hint, .hint { font-size: 11.5px; color: var(--text-3); }
 .field-row { display: flex; gap: 12px; }
 .field-row > .field { flex: 1; }
 

@@ -87,21 +87,24 @@ export default {
       }
       for (const p of profiles) {
         const isActive = activeId === p.id;
+        const isRcon = p.mode === 'Rcon';
         profileList.append(h('div', { class: 'card profile-card', style: { padding: '13px 16px', background: 'var(--surface-2)' } },
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
-              h('span', { class: 'badge' }, p.type),
-              p.minecraftVersion ? h('span', { class: 'badge info' }, p.minecraftVersion) : null,
+              isRcon ? h('span', { class: 'badge info' }, 'RCON') : h('span', { class: 'badge' }, p.type),
+              !isRcon && p.minecraftVersion ? h('span', { class: 'badge info' }, p.minecraftVersion) : null,
               isActive ? h('span', { class: 'badge accent' }, 'ACTIVE') : null),
-            h('div', { class: 'meta' }, `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
+            h('div', { class: 'meta' }, isRcon
+              ? `${p.rconHost}:${p.rconPort}`
+              : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
           h('div', { class: 'actions' },
             !isActive ? h('button', { class: 'btn sm', onclick: () => activate(p.id) }, 'Set active') : null,
             h('button', {
-              class: 'btn sm primary', title: 'Start this server',
+              class: 'btn sm primary', title: isRcon ? 'Connect to this server' : 'Start this server',
               onclick: () => start(p.id),
               disabled: ['Running', 'Starting', 'Stopping'].includes(state.status?.status),
-            }, icon('play'), 'Start'),
+            }, icon('play'), isRcon ? 'Connect' : 'Start'),
             h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openProfileEditor(p) }, icon('pencil')),
             h('button', {
               class: 'btn sm icon-only danger', title: 'Delete',
@@ -131,6 +134,7 @@ export default {
     function openProfileEditor(profile) {
       const isNew = !profile;
       const seed = profile ?? {
+        mode: 'Managed',
         name: 'My Server',
         jarPath: downloadedJar?.jarPath ?? '',
         workingDirectory: downloadedJar ? dirname(downloadedJar.jarPath) : '',
@@ -139,9 +143,13 @@ export default {
         minecraftVersion: downloadedJar?.version ?? '',
         jvmArguments: '',
         type: downloadedJar?.type ?? 'Paper',
+        rconHost: '', rconPort: 25575,
       };
 
       const f = {
+        mode: h('select', { class: 'select' },
+          h('option', { value: 'Managed', selected: seed.mode !== 'Rcon' }, 'Managed — the panel launches the server'),
+          h('option', { value: 'Rcon', selected: seed.mode === 'Rcon' }, 'Remote — attach via RCON')),
         name: h('input', { class: 'input', value: seed.name }),
         jar: h('input', { class: 'input', value: seed.jarPath, placeholder: 'C:\\…\\paper-1.21.4.jar' }),
         dir: h('input', { class: 'input', value: seed.workingDirectory, placeholder: 'Defaults to the JAR’s folder' }),
@@ -155,6 +163,12 @@ export default {
         jvm: h('input', { class: 'input', value: seed.jvmArguments, placeholder: '-XX:+UseG1GC …' }),
         type: h('select', { class: 'select' },
           serverTypes.map(t => h('option', { value: t.type, selected: t.type === seed.type }, t.displayName))),
+        rconHost: h('input', { class: 'input', value: seed.rconHost ?? '', placeholder: '127.0.0.1' }),
+        rconPort: h('input', { class: 'input', type: 'number', min: 1, max: 65535, value: seed.rconPort ?? 25575 }),
+        rconPassword: h('input', {
+          class: 'input', type: 'password', autocomplete: 'new-password',
+          placeholder: !isNew && profile.hasRconPassword ? 'Unchanged — leave blank to keep it' : 'Password',
+        }),
       };
 
       const syncCustom = () => { f.javaCustom.style.display = f.java.value === '__custom' ? '' : 'none'; };
@@ -165,28 +179,57 @@ export default {
         if (!f.dir.value && f.jar.value) f.dir.value = dirname(f.jar.value);
       });
 
+      const managedFields = h('div', {},
+        h('div', { class: 'field-row' },
+          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'), f.jar),
+          h('div', { class: 'field' }, h('label', {}, 'Type'), f.type)),
+        h('div', { class: 'field' }, h('label', {}, 'Working directory'), f.dir),
+        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, f.javaCustom),
+        h('div', { class: 'field-row' },
+          h('div', { class: 'field' }, h('label', {}, 'Min RAM (MB)'), f.minRam),
+          h('div', { class: 'field' }, h('label', {}, 'Max RAM (MB)'), f.maxRam),
+          h('div', { class: 'field' }, h('label', {}, 'Minecraft version'), f.version)),
+        h('div', { class: 'field' }, h('label', {}, 'Extra JVM arguments'), f.jvm));
+
+      const rconFields = h('div', {},
+        h('div', { class: 'field-row' },
+          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Host or IP address'), f.rconHost),
+          h('div', { class: 'field' }, h('label', {}, 'RCON port'), f.rconPort)),
+        h('div', { class: 'field' },
+          h('label', {}, 'RCON password'), f.rconPassword,
+          h('span', { class: 'hint' }, !isNew && profile.hasRconPassword
+            ? 'A password is already set on the server — leave this blank to keep it.'
+            : 'Must match rcon.password in the remote server’s server.properties.')),
+        h('div', { class: 'field' },
+          h('span', { class: 'hint' },
+            'The remote server needs enable-rcon=true and a matching rcon.port. RCON sends its password in plain text, so only connect over a trusted network.')));
+
+      const syncMode = () => {
+        const isRcon = f.mode.value === 'Rcon';
+        managedFields.style.display = isRcon ? 'none' : '';
+        rconFields.style.display = isRcon ? '' : 'none';
+      };
+      f.mode.addEventListener('change', syncMode);
+      syncMode();
+
       modal({
         title: isNew ? 'New server profile' : `Edit “${profile.name}”`,
         wide: true,
         body: h('div', {},
           h('div', { class: 'field-row' },
             h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Name'), f.name),
-            h('div', { class: 'field' }, h('label', {}, 'Type'), f.type)),
-          h('div', { class: 'field' }, h('label', {}, 'Server JAR path'), f.jar),
-          h('div', { class: 'field' }, h('label', {}, 'Working directory'), f.dir),
-          h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, f.javaCustom),
-          h('div', { class: 'field-row' },
-            h('div', { class: 'field' }, h('label', {}, 'Min RAM (MB)'), f.minRam),
-            h('div', { class: 'field' }, h('label', {}, 'Max RAM (MB)'), f.maxRam),
-            h('div', { class: 'field' }, h('label', {}, 'Minecraft version'), f.version)),
-          h('div', { class: 'field' }, h('label', {}, 'Extra JVM arguments'), f.jvm)),
+            h('div', { class: 'field' }, h('label', {}, 'Connection'), f.mode)),
+          managedFields,
+          rconFields),
         actions: [
           { label: 'Cancel', kind: 'ghost' },
           {
             label: isNew ? 'Create profile' : 'Save changes',
             kind: 'primary',
             onClick: () => {
+              const mode = f.mode.value;
               const body = {
+                mode,
                 name: f.name.value.trim() || 'My Server',
                 jarPath: f.jar.value.trim(),
                 workingDirectory: f.dir.value.trim() || dirname(f.jar.value.trim()),
@@ -196,13 +239,24 @@ export default {
                 minecraftVersion: f.version.value.trim(),
                 jvmArguments: f.jvm.value.trim(),
                 type: f.type.value,
+                rconHost: f.rconHost.value.trim(),
+                rconPort: parseInt(f.rconPort.value, 10) || 25575,
               };
-              if (!body.jarPath) { toast('A server JAR path is required.', 'err'); return false; }
+              if (mode === 'Managed' && !body.jarPath) { toast('A server JAR path is required.', 'err'); return false; }
+              if (mode === 'Rcon' && !body.rconHost) { toast('A host or IP address is required.', 'err'); return false; }
+
+              const password = f.rconPassword.value;
               const req = isNew
                 ? api.post('/api/profiles', body)
                 : api.put(`/api/profiles/${profile.id}`, body);
-              req.then(() => { toast(isNew ? 'Profile created' : 'Profile saved'); loadProfiles(); })
-                 .catch(err => toast(err.message, 'err'));
+              req.then(async created => {
+                if (mode === 'Rcon' && password) {
+                  const id = isNew ? created.id : profile.id;
+                  await api.put(`/api/profiles/${id}/rcon-password`, { password });
+                }
+                toast(isNew ? 'Profile created' : 'Profile saved');
+                loadProfiles();
+              }).catch(err => toast(err.message, 'err'));
             },
           },
         ],

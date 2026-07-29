@@ -88,7 +88,9 @@ export default {
 
       const bits = [];
       if (s?.version) bits.push(`v${s.version}`);
-      if (status === 'Running') bits.push(`up ${fmtUptime(s.uptimeSeconds)}`);
+      // RCON has no real "since when" to report — the panel only knows when it
+      // connected, not when the remote server actually started.
+      if (status === 'Running' && (s?.capabilities?.hasUptime ?? true)) bits.push(`up ${fmtUptime(s.uptimeSeconds)}`);
       if (s?.profile?.name) bits.push(s.profile.name);
       els.statusSub.textContent = bits.join(' · ') || 'No profile started yet';
 
@@ -104,27 +106,42 @@ export default {
       const m = state.metrics;
       const hist = state.metricsHistory;
 
-      // Server process tiles
-      const cpu = m?.serverCpuPercent ?? 0;
+      // Server process tiles. null means no local process to sample — the
+      // server hasn't started yet, or this is an RCON connection, which never
+      // has one. Show that plainly rather than drawing an idle 0% server.
+      const cpu = m?.serverCpuPercent;
       els.cpuValue.innerHTML = '';
-      els.cpuValue.append(cpu.toFixed(0), h('span', { class: 'unit' }, '%'));
+      if (cpu == null) {
+        els.cpuValue.title = 'No server process running.';
+        els.cpuValue.append('—');
+      } else {
+        els.cpuValue.title = '';
+        els.cpuValue.append(cpu.toFixed(0), h('span', { class: 'unit' }, '%'));
+      }
       els.cpuSpark.innerHTML = '';
-      els.cpuSpark.append(sparkline(hist.map(x => x.serverCpuPercent ?? 0), { max: 100 }));
+      if (cpu != null) els.cpuSpark.append(sparkline(hist.map(x => x.serverCpuPercent ?? 0), { max: 100 }));
 
-      const ram = m?.serverRamMb ?? 0;
+      const ram = m?.serverRamMb;
       const ramMax = m?.serverRamMaxMb || 0;
       els.ramValue.innerHTML = '';
-      els.ramValue.append(
-        ram >= 1024 ? (ram / 1024).toFixed(1) : String(Math.round(ram)),
-        h('span', { class: 'unit' }, ram >= 1024 ? 'GB' : 'MB'));
-      if (ramMax > 0) {
-        const pct = Math.min(ram / ramMax * 100, 100);
-        els.ramMeter.className = `meter ${pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : ''}`;
-        els.ramMeter.firstChild.style.width = `${pct}%`;
-        els.ramValue.append(h('span', { class: 'unit' }, ` / ${(ramMax / 1024).toFixed(1)} GB`));
+      els.ramMeter.style.display = ram == null ? 'none' : '';
+      if (ram == null) {
+        els.ramValue.title = 'No server process running.';
+        els.ramValue.append('—');
+      } else {
+        els.ramValue.title = '';
+        els.ramValue.append(
+          ram >= 1024 ? (ram / 1024).toFixed(1) : String(Math.round(ram)),
+          h('span', { class: 'unit' }, ram >= 1024 ? 'GB' : 'MB'));
+        if (ramMax > 0) {
+          const pct = Math.min(ram / ramMax * 100, 100);
+          els.ramMeter.className = `meter ${pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : ''}`;
+          els.ramMeter.firstChild.style.width = `${pct}%`;
+          els.ramValue.append(h('span', { class: 'unit' }, ` / ${(ramMax / 1024).toFixed(1)} GB`));
+        }
       }
       els.ramSpark.innerHTML = '';
-      els.ramSpark.append(sparkline(hist.map(x => x.serverRamMb ?? 0), { max: ramMax || null }));
+      if (ram != null) els.ramSpark.append(sparkline(hist.map(x => x.serverRamMb ?? 0), { max: ramMax || null }));
 
       // Machine gauges. null means the platform can't report the figure — show it
       // as unavailable rather than as a gauge pinned at zero, which reads as idle.

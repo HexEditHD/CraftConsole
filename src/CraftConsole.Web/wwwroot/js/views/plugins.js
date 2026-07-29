@@ -35,14 +35,19 @@ export default {
       folderLabel.textContent = data.folder ?? '';
       body.innerHTML = '';
 
+      if (!data.available) {
+        body.append(h('div', { class: 'card' }, h('div', { class: 'empty' },
+          icon('info'),
+          h('div', { class: 'empty-title' }, 'Not available'),
+          h('div', { class: 'empty-sub' }, data.reason))));
+        return;
+      }
+
       if (!data.plugins?.length) {
         body.append(h('div', { class: 'card' }, h('div', { class: 'empty' },
           icon('box'),
           h('div', { class: 'empty-title' }, 'No plugins found'),
-          h('div', { class: 'empty-sub' },
-            data.folder
-              ? 'Drop plugin .jar files into the plugins folder and re-scan.'
-              : 'Start a server first — its plugins folder will be scanned automatically.'))));
+          h('div', { class: 'empty-sub' }, 'Drop plugin .jar files into the plugins folder and re-scan.'))));
         return;
       }
 
