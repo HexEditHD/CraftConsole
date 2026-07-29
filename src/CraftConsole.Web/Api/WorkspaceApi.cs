@@ -50,7 +50,7 @@ public static class WorkspaceApi
             if (folder is null) return Results.BadRequest(new { Message = "No server has been started yet." });
 
             // fileName comes from the client — never allow it to escape the plugins folder
-            if (fileName.Contains("..") || fileName.Contains('/') || fileName.Contains('\\'))
+            if (!IsSafeFileName(fileName))
                 return Results.BadRequest(new { Message = "Invalid file name." });
 
             var source = Path.Combine(folder, fileName);
@@ -106,17 +106,49 @@ public static class WorkspaceApi
 
     /// <summary>Resolves a client-supplied relative path, refusing anything outside the server dir.</summary>
     private static string? ResolveJailedPath(ServerSupervisor sup, string relativePath)
+        => sup.ActiveProfile?.WorkingDirectory is { } root
+            ? ResolveJailedPath(root, relativePath)
+            : null;
+
+    /// <summary>
+    /// Containment check for a client-supplied path. Returns the absolute path when
+    /// it stays inside <paramref name="root"/>, otherwise null.
+    ///
+    /// Kept separate from the supervisor so it can be tested directly — this is the
+    /// only thing standing between the file editor and the rest of the filesystem.
+    /// </summary>
+    internal static string? ResolveJailedPath(string root, string relativePath)
     {
-        var root = sup.ActiveProfile?.WorkingDirectory;
-        if (root is null) return null;
+        if (string.IsNullOrWhiteSpace(relativePath)) return null;
 
-        var rootFull = Path.GetFullPath(root);
-        var candidate = Path.GetFullPath(Path.Combine(rootFull, relativePath));
+        string rootFull, candidate;
+        try
+        {
+            rootFull = Path.GetFullPath(root);
+            // An absolute or rooted relativePath wins over root in Path.Combine, so
+            // the comparison below is what actually rejects it — not Combine itself.
+            candidate = Path.GetFullPath(Path.Combine(rootFull, relativePath));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null; // malformed path — treat as out of bounds
+        }
 
-        return candidate.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+        if (!rootFull.EndsWith(Path.DirectorySeparatorChar))
+            rootFull += Path.DirectorySeparatorChar;
+
+        return candidate.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase)
             ? candidate
             : null;
     }
+
+    /// <summary>Rejects a plugin file name that tries to address anything but a file in the folder.</summary>
+    internal static bool IsSafeFileName(string fileName)
+        => !string.IsNullOrWhiteSpace(fileName)
+           && !fileName.Contains("..")
+           && !fileName.Contains('/')
+           && !fileName.Contains('\\')
+           && fileName.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
     private static FileNodeDto? BuildNode(string path, string root)
     {

@@ -16,18 +16,26 @@ public sealed class SchedulerService : BackgroundService
     private readonly ILogger<SchedulerService> _log;
     private readonly JsonFileStore<List<ScheduledTask>> _store;
 
+    // Every clock read and the tick timer go through this, so tests can drive
+    // interval and daily triggers instantly instead of waiting on wall time.
+    private readonly TimeProvider _time;
+
     private readonly object _lock = new();
-    private List<ScheduledTask> _tasks = [];
+    private readonly List<ScheduledTask> _tasks = [];
     private readonly Dictionary<Guid, DateTimeOffset> _nextDue = [];
     private string _lastCronMinute = "";
 
+    /// <summary>How often trigger conditions are evaluated.</summary>
+    internal static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
+
     public SchedulerService(
         ServerSupervisor supervisor, EventBroker broker, SettingsHolder settings,
-        ILogger<SchedulerService> log)
+        ILogger<SchedulerService> log, TimeProvider? timeProvider = null)
     {
         _supervisor = supervisor;
         _broker = broker;
         _log = log;
+        _time = timeProvider ?? TimeProvider.System;
         _store = new JsonFileStore<List<ScheduledTask>>(settings.AppDataPath, "tasks.json");
 
         _supervisor.GameEvent += OnGameEvent;
@@ -93,19 +101,15 @@ public sealed class SchedulerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        _tasks = await _store.LoadAsync() ?? [];
-        lock (_lock)
-        {
-            foreach (var task in _tasks) ScheduleNextDue(task);
-        }
+        await LoadAsync();
         _broker.Publish("tasks", new { Tasks = Snapshot() });
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        using var timer = new PeriodicTimer(TickInterval, _time);
         while (await timer.WaitForNextTickAsync(ct))
         {
             List<ScheduledTask> due = [];
-            var now = DateTimeOffset.UtcNow;
-            var minute = DateTime.Now.ToString("HH:mm");
+            var now = _time.GetUtcNow();
+            var minute = _time.GetLocalNow().ToString("HH:mm");
 
             lock (_lock)
             {
@@ -133,13 +137,35 @@ public sealed class SchedulerService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Reads tasks.json into the live list. Merges rather than replaces: the
+    /// service is a singleton as well as a hosted service, so an AddAsync can
+    /// land between construction and the loop starting, and replacing the list
+    /// outright would drop it.
+    /// </summary>
+    internal async Task LoadAsync()
+    {
+        var loaded = await _store.LoadAsync() ?? [];
+
+        lock (_lock)
+        {
+            foreach (var task in loaded)
+            {
+                if (_tasks.Any(t => t.Id == task.Id)) continue;
+                _tasks.Add(task);
+            }
+
+            foreach (var task in _tasks) ScheduleNextDue(task);
+        }
+    }
+
     private void ScheduleNextDue(ScheduledTask task)
     {
         if (task.TriggerType == TriggerType.Interval
             && task.IsEnabled
             && int.TryParse(task.TriggerValue, out var secs) && secs > 0)
         {
-            _nextDue[task.Id] = DateTimeOffset.UtcNow.AddSeconds(secs);
+            _nextDue[task.Id] = _time.GetUtcNow().AddSeconds(secs);
         }
         else
         {
