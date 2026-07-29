@@ -8,7 +8,15 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux is not optional here: the Java-detection path (path separator,
+        # no .exe suffix, /usr/lib/jvm, update-alternatives) and the /proc
+        # metrics reader only execute on Linux.
+        os: [windows-latest, ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -16,10 +24,73 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CraftConsole.slnx
 
       - name: Build
-        run: dotnet build CraftConsole.slnx -c Release --no-incremental
+        run: dotnet build CraftConsole.slnx -c Release --no-restore
 
       - name: Test
-        run: dotnet test tests/CraftConsole.Tests/CraftConsole.Tests.csproj -c Release --no-build
+        run: >
+          dotnet test CraftConsole.slnx -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults/
+          if-no-files-found: ignore
+
+  package:
+    name: Verify packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Proves the .deb still builds and installs on every PR, rather than
+      # discovering it is broken at tag time.
+      - name: Build .deb
+        run: |
+          chmod +x packaging/build-deb.sh
+          packaging/build-deb.sh 0.0.0~ci linux-x64 dist
+
+      - name: Install, verify, purge
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./dist/craftconsole_0.0.0~ci_amd64.deb
+
+          test -x /opt/craftconsole/CraftConsole
+          test -f /lib/systemd/system/craftconsole.service
+          getent passwd craftconsole >/dev/null
+
+          # GitHub runners do run systemd, so the unit should actually come up.
+          sudo systemctl start craftconsole.service
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5178/api/auth/status; then
+              echo "Panel responded after ${i}s"; break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Panel did not respond in time"; sudo journalctl -u craftconsole --no-pager -n 60; exit 1
+            fi
+            sleep 1
+          done
+
+          sudo systemctl is-active --quiet craftconsole.service
+          test -d /var/lib/craftconsole
+
+          sudo apt-get purge -y craftconsole
+          # Purge must leave nothing behind.
+          ! test -e /opt/craftconsole/CraftConsole
+          ! test -e /var/lib/craftconsole
+          ! getent passwd craftconsole >/dev/null
+          echo "Package install/verify/purge cycle passed"

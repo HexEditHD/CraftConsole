@@ -1,0 +1,59 @@
+[Unit]
+Description=CraftConsole Minecraft server panel
+Documentation=https://github.com/HexEditHD/CraftConsole
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Plain simple, not notify: the app does not call sd_notify, and Type=notify
+# would leave systemd waiting for a readiness signal that never arrives and
+# then mark the unit failed.
+Type=simple
+ExecStart=/opt/craftconsole/CraftConsole --no-browser
+Restart=on-failure
+RestartSec=5
+
+User=craftconsole
+Group=craftconsole
+WorkingDirectory=/var/lib/craftconsole
+
+# The panel binds to loopback by default. Every request needs the password set
+# on first run, so widening this is a deliberate choice — do it over a tunnel or
+# a trusted network, because there is still no TLS. To change it, run
+#   sudo systemctl edit craftconsole
+# and set Environment=ASPNETCORE_URLS=http://0.0.0.0:5178
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5178
+Environment=CRAFTCONSOLE_DATA=/var/lib/craftconsole
+Environment=DOTNET_EnableDiagnostics=0
+
+# ── Sandboxing ────────────────────────────────────────────────────────────
+# Deliberately restrained. This service launches child JVMs and reads and writes
+# Minecraft server directories chosen by the user at runtime, so much of the
+# usual hardening would break it:
+#   ProtectSystem=strict / ReadOnlyPaths — blocks writing server directories
+#   ProtectHome=true                     — servers commonly live under /home
+#   PrivateUsers / RestrictNamespaces    — break child process creation
+#   MemoryDenyWriteExecute               — breaks the JVM JIT outright
+# What remains is what can be applied without constraining that workload.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+# A Minecraft server is memory-hungry and spawns many threads; leave headroom.
+LimitNOFILE=65535
+TasksMax=infinity
+
+# Give a running server time to save and shut down before systemd escalates.
+# The panel stops the JVM gracefully first and terminates it if it will not exit.
+# KillMode=mixed sends SIGTERM to the panel only, letting it manage its child.
+TimeoutStopSec=120
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+CC_USER=craftconsole
+CC_GROUP=craftconsole
+CC_DATA=/var/lib/craftconsole
+
+case "$1" in
+  purge)
+    # Only purge discards state. A plain remove keeps server profiles, the
+    # password and backup definitions so reinstalling resumes where it left off.
+    if getent passwd "$CC_USER" >/dev/null; then
+      deluser --system "$CC_USER" >/dev/null 2>&1 || true
+    fi
+    if getent group "$CC_GROUP" >/dev/null; then
+      delgroup --system "$CC_GROUP" >/dev/null 2>&1 || true
+    fi
+
+    rm -rf "$CC_DATA"
+    ;;
+
+  remove)
+    # The unit file is gone by now; let systemd forget it.
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    ;;
+
+  upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+
+  *)
+    echo "postrm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

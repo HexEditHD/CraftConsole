@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+CC_UNIT=craftconsole.service
+
+case "$1" in
+  remove|deconfigure)
+    # Stop before files disappear. The panel shuts down any running Minecraft
+    # server gracefully first, bounded by TimeoutStopSec in the unit.
+    if [ -d /run/systemd/system ]; then
+      systemctl stop "$CC_UNIT" >/dev/null 2>&1 || true
+      systemctl disable "$CC_UNIT" >/dev/null 2>&1 || true
+    fi
+    ;;
+
+  upgrade|failed-upgrade)
+    # Leave it running; postinst restarts it once the new binary is in place.
+    ;;
+
+  *)
+    echo "prerm called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

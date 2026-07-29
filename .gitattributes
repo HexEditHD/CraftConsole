@@ -1,0 +1,15 @@
+# Normalise to LF in the repository; Git still checks out native endings.
+* text=auto
+
+# These are read by Linux tooling. CRLF would break the shebang with a
+# "bad interpreter: /bin/sh^M" error and confuse systemd's unit parser —
+# both only at install time on the target machine, far from the change.
+*.sh                      text eol=lf
+*.service                 text eol=lf
+packaging/debian/postinst text eol=lf
+packaging/debian/prerm    text eol=lf
+packaging/debian/postrm   text eol=lf
+
+# Shell-driven CI steps have the same exposure.
+*.yml                     text eol=lf
+*.yaml                    text eol=lf
