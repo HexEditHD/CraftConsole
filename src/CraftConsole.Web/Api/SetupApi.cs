@@ -9,6 +9,7 @@ public static class SetupApi
 {
     public record ServerDownloadRequest(ServerType Type, string? Version, string Directory);
     public record JavaDownloadRequest(int Major);
+    public record SetRconPasswordRequest(string Password);
     public record SettingsDto(
         bool ShowTimestamp, bool ShowDate, bool AutoScrollConsole, int MaxConsoleLines,
         string ColorInfo, string ColorWarn, string ColorError, string ColorPlayer);
@@ -16,18 +17,39 @@ public static class SetupApi
     public static void MapSetupApi(this IEndpointRouteBuilder app)
     {
         // ── Profiles ──────────────────────────────────────────────────────
-        app.MapGet("/api/profiles", async (ProfilesService profiles, SettingsHolder settings) =>
-            Results.Json(new
+        app.MapGet("/api/profiles", async (ProfilesService profiles, RconSecretStore secrets, SettingsHolder settings) =>
+        {
+            var list = await profiles.ListAsync();
+            var withFlags = new List<object>(list.Count);
+            foreach (var p in list)
             {
-                Profiles = await profiles.ListAsync(),
-                ActiveProfileId = settings.Current.ActiveProfileId,
-            }, Json.Options));
+                // ServerProfile itself never carries the password (see RconSecretStore) —
+                // this flag is computed per-request so the UI can say "set" vs "unset"
+                // without the value ever existing anywhere the client can read it.
+                var hasPassword = p.Mode == ConnectionMode.Rcon && await secrets.HasAsync(p.Id);
+                withFlags.Add(new
+                {
+                    p.Id, p.Name, p.Mode,
+                    p.JarPath, p.WorkingDirectory, p.JavaPath, p.MinRamMb, p.MaxRamMb,
+                    p.MinecraftVersion, p.JvmArguments, p.Type,
+                    p.RconHost, p.RconPort,
+                    HasRconPassword = hasPassword,
+                });
+            }
+            return Results.Json(new { Profiles = withFlags, ActiveProfileId = settings.Current.ActiveProfileId }, Json.Options);
+        });
 
         app.MapPost("/api/profiles", async (ServerProfile profile, ProfilesService profiles) =>
-            Results.Json(await profiles.AddAsync(profile), Json.Options));
+        {
+            try { return Results.Json(await profiles.AddAsync(profile), Json.Options); }
+            catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
+        });
 
         app.MapPut("/api/profiles/{id:guid}", async (Guid id, ServerProfile profile, ProfilesService profiles) =>
-            await profiles.UpdateAsync(id, profile) ? Results.NoContent() : Results.NotFound());
+        {
+            try { return await profiles.UpdateAsync(id, profile) ? Results.NoContent() : Results.NotFound(); }
+            catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
+        });
 
         app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles) =>
             await profiles.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
@@ -36,6 +58,21 @@ public static class SetupApi
         {
             if (await profiles.GetAsync(id) is null) return Results.NotFound();
             await profiles.SetActiveAsync(id);
+            return Results.NoContent();
+        });
+
+        // Write-only: sets or replaces the password, never returns it. GET
+        // /api/profiles exposes only whether one is set (HasRconPassword above).
+        app.MapPut("/api/profiles/{id:guid}/rcon-password",
+            async (Guid id, SetRconPasswordRequest req, ProfilesService profiles, RconSecretStore secrets) =>
+        {
+            if (await profiles.GetAsync(id) is not { } profile) return Results.NotFound();
+            if (profile.Mode != ConnectionMode.Rcon)
+                return Results.BadRequest(new { Message = "Only RCON profiles have a password." });
+            if (string.IsNullOrEmpty(req.Password))
+                return Results.BadRequest(new { Message = "A password is required." });
+
+            await secrets.SetAsync(id, req.Password);
             return Results.NoContent();
         });
 

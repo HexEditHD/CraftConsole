@@ -3,6 +3,7 @@ using CraftConsole.Infrastructure.Http;
 using CraftConsole.Infrastructure.Logging;
 using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
 using Serilog;
 
@@ -43,6 +44,14 @@ builder.Services.AddSingleton(new HttpClient());
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<ServerDownloadService>();
 builder.Services.AddSingleton<JavaDownloadService>();
+
+// Key ring pinned to the app data directory: the default location ignores
+// --data-dir, which would leave the Debian service unable to decrypt RCON
+// passwords it wrote before a restart (or read another instance's).
+builder.Services.AddDataProtection()
+    .SetApplicationName("CraftConsole")
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(appDataPath, "dpkeys")));
+builder.Services.AddSingleton<RconSecretStore>();
 
 builder.Services.AddSingleton<EventBroker>();
 builder.Services.AddSingleton<ServerSupervisor>();

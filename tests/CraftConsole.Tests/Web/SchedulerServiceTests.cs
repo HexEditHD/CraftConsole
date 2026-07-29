@@ -22,8 +22,12 @@ public class SchedulerServiceTests : IDisposable
         Directory.CreateDirectory(_dir);
 
         var settings = new SettingsHolder(_dir);
+        var secrets = new RconSecretStore(
+            settings,
+            Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
+                new DirectoryInfo(Path.Combine(_dir, "dpkeys"))));
         _supervisor = new ServerSupervisor(
-            _broker, settings, new HttpClient(), NullLogger<ServerSupervisor>.Instance);
+            _broker, settings, new HttpClient(), NullLogger<ServerSupervisor>.Instance, secrets);
         _scheduler = new SchedulerService(
             _supervisor, _broker, settings, NullLogger<SchedulerService>.Instance, _time);
     }

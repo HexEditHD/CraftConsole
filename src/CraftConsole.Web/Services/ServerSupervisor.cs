@@ -19,6 +19,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly SettingsHolder _settings;
     private readonly HttpClient _http;
     private readonly ILogger<ServerSupervisor> _log;
+    private readonly RconSecretStore _secrets;
 
     private readonly object _lock = new();
 
@@ -33,7 +34,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private readonly Dictionary<string, string> _geoCache = new();
     private int _nextIssueId = 1;
 
-    private ServerProcessManager? _server;
+    private IMinecraftServer? _server;
     private IDisposable? _consoleSub;
     private IDisposable? _statusSub;
 
@@ -50,16 +51,24 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     public int? ProcessId => _server?.ProcessId;
     public DateTimeOffset? StartedAt => Status == ServerStatus.Running ? _startedAt : null;
 
+    // Derived from the active profile rather than _server, so it is available
+    // before a connection exists too — the UI needs to know a not-yet-started
+    // RCON profile can't be restarted just as much as a connected one.
+    public ServerCapabilities Capabilities =>
+        ActiveProfile?.Mode == ConnectionMode.Rcon ? ServerCapabilities.Rcon : ServerCapabilities.Managed;
+
     [GeneratedRegex(@"Starting minecraft server version (?<ver>[\d.]+)")]
     private static partial Regex VersionPattern();
 
     public ServerSupervisor(
-        EventBroker broker, SettingsHolder settings, HttpClient http, ILogger<ServerSupervisor> log)
+        EventBroker broker, SettingsHolder settings, HttpClient http, ILogger<ServerSupervisor> log,
+        RconSecretStore secrets)
     {
         _broker = broker;
         _settings = settings;
         _http = http;
         _log = log;
+        _secrets = secrets;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -81,15 +90,16 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 _serverVersion = "";
             }
 
-            _maxPlayers = ReadMaxPlayers(profile.WorkingDirectory);
+            // An already-running remote server has necessarily already accepted its
+            // EULA and has its own real player cap; neither applies to a profile
+            // with no local working directory to read server.properties/eula.txt from.
+            _maxPlayers = profile.Mode == ConnectionMode.Managed ? ReadMaxPlayers(profile.WorkingDirectory) : 20;
             ActiveProfile = profile;
 
-            // A previous run may have left eula=false on disk; re-check up front so
-            // the banner is accurate before the server has logged anything.
-            if (!IsEulaAccepted(profile.WorkingDirectory))
+            if (profile.Mode == ConnectionMode.Managed && !IsEulaAccepted(profile.WorkingDirectory))
                 lock (_lock) _eulaRequired = true;
 
-            var server = new ServerProcessManager(profile);
+            var server = await CreateServerAsync(profile);
             _consoleSub = server.ConsoleOutput.Subscribe(OnConsoleEntry);
             _statusSub = server.StatusChanged.Subscribe(OnStatusChanged);
             _server = server;
@@ -132,6 +142,12 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     public async Task RestartAsync(CancellationToken ct = default)
     {
         var profile = ActiveProfile ?? throw new InvalidOperationException("No server has been started yet.");
+
+        if (!Capabilities.CanRestart)
+            throw new InvalidOperationException(
+                "This server is connected over RCON and can't be restarted from here — " +
+                "the panel doesn't own the process, only the server itself can bring it back.");
+
         await StopAsync(ct);
         await Task.Delay(TimeSpan.FromSeconds(3), ct);
         await StartAsync(profile, ct);
@@ -153,12 +169,24 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             return;
         }
 
-        await _server.SendCommandAsync(cmd.StartsWith('/') ? cmd[1..] : cmd, ct);
+        var reply = await _server.SendCommandAsync(cmd.StartsWith('/') ? cmd[1..] : cmd, ct);
+
+        // A managed process's reply arrives later through ConsoleOutput and lands
+        // via OnConsoleEntry there — only append here when the transport (RCON)
+        // handed the reply back synchronously, or it would show up twice.
+        if (!string.IsNullOrWhiteSpace(reply))
+        {
+            foreach (var line in reply.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                OnConsoleEntry(new ConsoleEntry(DateTimeOffset.Now, Raw: line, Message: line, Level: ConsoleEntryLevel.Info));
+        }
     }
 
     public async Task AcceptEulaAsync(CancellationToken ct = default)
     {
         var profile = ActiveProfile ?? throw new InvalidOperationException("No server has been started yet.");
+        if (profile.Mode != ConnectionMode.Managed)
+            throw new InvalidOperationException("Only a managed server has a local eula.txt to accept.");
+
         var eulaPath = Path.Combine(profile.WorkingDirectory, "eula.txt");
 
         try
@@ -231,7 +259,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 StartedAt,
                 UptimeSeconds = StartedAt is { } s ? (long)(DateTimeOffset.UtcNow - s).TotalSeconds : 0,
                 PlayerCount = _players.Count,
-                MaxPlayers = _maxPlayers,
+                // RCON learns the real cap from polling `list`; before the first
+                // successful poll (or for a managed server, always) this falls back
+                // to the file-derived value set in StartAsync.
+                MaxPlayers = _server?.MaxPlayers ?? _maxPlayers,
                 EulaRequired = _eulaRequired,
                 Profile = ActiveProfile,
             };
@@ -463,6 +494,26 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
            || ip.StartsWith("172.2") || ip.StartsWith("172.30.") || ip.StartsWith("172.31.")
            || ip.StartsWith("fe80:") || ip.StartsWith("fd");
 
+    // ── Server construction ─────────────────────────────────────────────────
+
+    private async Task<IMinecraftServer> CreateServerAsync(ServerProfile profile)
+    {
+        switch (profile.Mode)
+        {
+            case ConnectionMode.Managed:
+                return new ServerProcessManager(profile);
+
+            case ConnectionMode.Rcon:
+                var password = await _secrets.TryGetAsync(profile.Id)
+                    ?? throw new InvalidOperationException(
+                        "No RCON password is set for this profile — set one in the profile editor first.");
+                return new RconMinecraftServer(profile, password);
+
+            default:
+                throw new NotSupportedException($"Unknown connection mode: {profile.Mode}");
+        }
+    }
+
     // ── server.properties helpers ─────────────────────────────────────────
 
     private static int ReadMaxPlayers(string workingDirectory)
@@ -500,7 +551,13 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (Status is ServerStatus.Running or ServerStatus.Starting)
+        // Only a managed process is the panel's to shut down. Auto-stopping here
+        // would be wrong for RCON — it would shut down someone else's running
+        // server as a side effect of the panel itself closing, or of the operator
+        // simply switching to a different profile (StartAsync routes through
+        // DisposeServerAsync below for that too).
+        if (ActiveProfile?.Mode == ConnectionMode.Managed
+            && Status is ServerStatus.Running or ServerStatus.Starting)
         {
             try { await StopAsync(); }
             catch { /* best-effort graceful stop on shutdown */ }

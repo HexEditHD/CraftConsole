@@ -15,8 +15,19 @@ public class ProfilesServiceTests : IDisposable
         _dir = Path.Combine(Path.GetTempPath(), "cc-profiles-test-" + Guid.NewGuid());
         Directory.CreateDirectory(_dir);
         _settings = new SettingsHolder(_dir);
-        _profiles = new ProfilesService(_settings);
+        _profiles = new ProfilesService(_settings, NewSecrets());
     }
+
+    /// <summary>
+    /// A file-backed IDataProtectionProvider needs no DI container. Every call
+    /// points at the same physical key folder under _dir, so instances built
+    /// this way — including "reloaded" ones in the round-trip tests below —
+    /// can decrypt what an earlier instance encrypted.
+    /// </summary>
+    private RconSecretStore NewSecrets() => new(
+        new SettingsHolder(_dir),
+        Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
+            new DirectoryInfo(Path.Combine(_dir, "dpkeys"))));
 
     public void Dispose()
     {
@@ -45,7 +56,7 @@ public class ProfilesServiceTests : IDisposable
     {
         var added = await _profiles.AddAsync(NewProfile());
 
-        var reloaded = new ProfilesService(new SettingsHolder(_dir));
+        var reloaded = new ProfilesService(new SettingsHolder(_dir), NewSecrets());
         var list = await reloaded.ListAsync();
 
         Assert.Single(list);
@@ -74,7 +85,7 @@ public class ProfilesServiceTests : IDisposable
 
         await _profiles.SetActiveAsync(second.Id);
 
-        var reloaded = new ProfilesService(new SettingsHolder(_dir));
+        var reloaded = new ProfilesService(new SettingsHolder(_dir), NewSecrets());
         Assert.Equal(second.Id, (await reloaded.GetActiveAsync())!.Id);
     }
 

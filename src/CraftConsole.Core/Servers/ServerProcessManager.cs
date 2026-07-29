@@ -6,7 +6,7 @@ using CraftConsole.Core.Process;
 
 namespace CraftConsole.Core.Servers;
 
-public sealed class ServerProcessManager : IMinecraftServer, IAsyncDisposable
+public sealed class ServerProcessManager : IMinecraftServer
 {
     /// <summary>How long a graceful "stop" is given before the process is terminated.</summary>
     public static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(45);
@@ -50,6 +50,12 @@ public sealed class ServerProcessManager : IMinecraftServer, IAsyncDisposable
             }
         }
     }
+
+    public ServerCapabilities Capabilities => ServerCapabilities.Managed;
+
+    // ServerSupervisor already tracks this for a managed process by reading
+    // server.properties directly; nothing here to add to that.
+    public int? MaxPlayers => null;
 
     public IObservable<ConsoleEntry> ConsoleOutput => _consoleSubject.AsObservable();
     public IObservable<ServerStatus> StatusChanged => _statusSubject.AsObservable();
@@ -152,7 +158,7 @@ public sealed class ServerProcessManager : IMinecraftServer, IAsyncDisposable
         await WaitForExitAsync(process, KillGracePeriod, ct);
     }
 
-    public Task SendCommandAsync(string command, CancellationToken ct = default)
+    public Task<string?> SendCommandAsync(string command, CancellationToken ct = default)
     {
         System.Diagnostics.Process? process;
         lock (_gate) process = _process;
@@ -169,7 +175,9 @@ public sealed class ServerProcessManager : IMinecraftServer, IAsyncDisposable
             // Process went away mid-write; the Exited handler reports the real story.
         }
 
-        return Task.CompletedTask;
+        // A managed process's reply, if any, arrives later on stdout via
+        // ConsoleOutput — there is no synchronous response to return here.
+        return Task.FromResult<string?>(null);
     }
 
     // ── Process output ────────────────────────────────────────────────────
