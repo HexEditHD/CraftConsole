@@ -15,6 +15,12 @@ VERSION="${1:?usage: build-deb.sh <version> <rid> [output-dir]}"
 RID="${2:?usage: build-deb.sh <version> <rid> [output-dir]}"
 OUTPUT_DIR="${3:-dist}"
 
+# The argument is a Debian version, which marks a prerelease with '~' so it sorts
+# before the release. MSBuild rejects '~' as invalid, and SemVer spells the same
+# thing with '-', so derive the assembly version rather than reusing the string.
+#   1.2.3~rc1  ->  deb 1.2.3~rc1   assembly 1.2.3-rc1
+DOTNET_VERSION="${VERSION//\~/-}"
+
 case "$RID" in
   linux-x64)   DEB_ARCH=amd64 ;;
   linux-arm64) DEB_ARCH=arm64 ;;
@@ -25,7 +31,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-echo "Building CraftConsole ${VERSION} for ${DEB_ARCH} (${RID})"
+echo "Building CraftConsole ${VERSION} (assembly ${DOTNET_VERSION}) for ${DEB_ARCH} (${RID})"
 
 # ── Publish ───────────────────────────────────────────────────────────────
 # CRAFTCONSOLE_BINARY reuses an existing publish instead of building one. Handy
@@ -39,7 +45,7 @@ else
   dotnet publish "$REPO_ROOT/src/CraftConsole.Web/CraftConsole.Web.csproj" \
     --configuration Release \
     --runtime "$RID" \
-    -p:Version="$VERSION" \
+    -p:Version="$DOTNET_VERSION" \
     -p:DebugType=None \
     -p:DebugSymbols=false \
     --output "$PUBLISH_DIR"

@@ -100,6 +100,105 @@ public sealed class BackupService
         return true;
     }
 
+    // ── Restore ───────────────────────────────────────────────────────────
+
+    public sealed record ArchiveInfo(string FileName, long SizeBytes, DateTimeOffset CreatedAt);
+
+    /// <summary>Archives previously written by a job, newest first.</summary>
+    public async Task<List<ArchiveInfo>?> ListArchivesAsync(Guid jobId)
+    {
+        var jobs = await JobsAsync();
+        BackupJob? job;
+        lock (_lock) job = jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job is null) return null;
+
+        try
+        {
+            if (!Directory.Exists(job.DestinationPath)) return [];
+
+            return [.. new DirectoryInfo(job.DestinationPath)
+                .EnumerateFiles($"{job.Name}_*.zip")
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .Select(f => new ArchiveInfo(f.Name, f.Length, f.LastWriteTimeUtc))];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log.LogWarning(ex, "Could not list archives for {Job}", job.Name);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Extracts an archive into <paramref name="targetDirectory"/>, overwriting
+    /// files it contains. Existing files not present in the archive are left alone.
+    /// </summary>
+    public async Task RestoreAsync(Guid jobId, string archiveFileName, string targetDirectory)
+    {
+        var jobs = await JobsAsync();
+        BackupJob? job;
+        lock (_lock) job = jobs.FirstOrDefault(j => j.Id == jobId);
+        if (job is null) throw new InvalidOperationException("That backup job no longer exists.");
+
+        // The archive name comes from the client; keep it inside the job's folder.
+        if (archiveFileName.Contains("..")
+            || archiveFileName.Contains('/')
+            || archiveFileName.Contains('\\'))
+            throw new InvalidOperationException("Invalid archive name.");
+
+        var archivePath = Path.Combine(job.DestinationPath, archiveFileName);
+        if (!File.Exists(archivePath))
+            throw new InvalidOperationException($"Archive \"{archiveFileName}\" was not found.");
+
+        if (string.IsNullOrWhiteSpace(targetDirectory))
+            throw new InvalidOperationException("A target directory is required.");
+
+        _broker.Publish("backup-restore", new { job.Id, job.Name, Phase = "running", Archive = archiveFileName });
+        try
+        {
+            await Task.Run(() => ExtractArchive(archivePath, targetDirectory));
+            _broker.Publish("backup-restore",
+                new { job.Id, job.Name, Phase = "done", Archive = archiveFileName, Target = targetDirectory });
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Restore of {Archive} failed", archiveFileName);
+            _broker.Publish("backup-restore",
+                new { job.Id, job.Name, Phase = "error", Archive = archiveFileName, Message = ex.Message });
+            throw new InvalidOperationException($"Restore failed: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Extracts with an explicit containment check on every entry. A crafted
+    /// archive can carry entry names like "../../etc/cron.d/x" (zip slip);
+    /// ExtractToDirectory guards this in modern .NET, but the check is done
+    /// here too because this method writes wherever the operator points it.
+    /// </summary>
+    internal static void ExtractArchive(string archivePath, string targetDirectory)
+    {
+        Directory.CreateDirectory(targetDirectory);
+        var targetRoot = Path.GetFullPath(targetDirectory);
+        if (!targetRoot.EndsWith(Path.DirectorySeparatorChar))
+            targetRoot += Path.DirectorySeparatorChar;
+
+        using var archive = ZipFile.OpenRead(archivePath);
+        foreach (var entry in archive.Entries)
+        {
+            // Directory entries have an empty name and a trailing separator.
+            if (string.IsNullOrEmpty(entry.Name))
+                continue;
+
+            var destination = Path.GetFullPath(Path.Combine(targetRoot, entry.FullName));
+
+            if (!destination.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Archive entry \"{entry.FullName}\" would be written outside the target directory.");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            entry.ExtractToFile(destination, overwrite: true);
+        }
+    }
+
     private static string ExecuteBackup(BackupJob job)
     {
         Directory.CreateDirectory(job.DestinationPath);

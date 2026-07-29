@@ -6,6 +6,8 @@ namespace CraftConsole.Web.Api;
 /// <summary>Backup jobs and scheduled tasks.</summary>
 public static class AutomationApi
 {
+    public record RestoreRequest(string Archive, string TargetDirectory);
+
     public static void MapAutomationApi(this IEndpointRouteBuilder app)
     {
         // ── Backups ───────────────────────────────────────────────────────
@@ -23,6 +25,33 @@ public static class AutomationApi
 
         app.MapPost("/api/backups/{id:guid}/run", async (Guid id, BackupService backups) =>
             await backups.RunAsync(id) ? Results.Accepted() : Results.NotFound());
+
+        app.MapGet("/api/backups/{id:guid}/archives", async (Guid id, BackupService backups) =>
+            await backups.ListArchivesAsync(id) is { } archives
+                ? Results.Json(new { Archives = archives }, Json.Options)
+                : Results.NotFound());
+
+        app.MapPost("/api/backups/{id:guid}/restore",
+            async (Guid id, RestoreRequest req, BackupService backups, ServerSupervisor sup) =>
+        {
+            // Restoring over a live world would fight the server for file handles
+            // and be silently overwritten by the next autosave.
+            if (sup.Status is not (ServerStatus.Stopped or ServerStatus.Crashed))
+                return Results.BadRequest(new
+                {
+                    Message = "Stop the server before restoring a backup — restoring over a running world would corrupt it."
+                });
+
+            try
+            {
+                await backups.RestoreAsync(id, req.Archive, req.TargetDirectory);
+                return Results.NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { ex.Message });
+            }
+        });
 
         // ── Scheduled tasks ───────────────────────────────────────────────
         app.MapGet("/api/tasks", (SchedulerService scheduler) =>
