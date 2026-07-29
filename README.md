@@ -4,7 +4,8 @@ A web control panel for Minecraft servers. It runs on the machine hosting your s
 listens on localhost, and you drive it from a browser.
 
 Start and stop the server, watch its console live, run commands, manage players and
-plugins, edit configuration files, schedule tasks, and take and restore backups.
+plugins, edit configuration files, schedule tasks, and take and restore backups. It can also
+attach to a server it did not start itself over RCON — see below.
 
 ---
 
@@ -58,6 +59,26 @@ Paper and Purpur can be fetched directly), pick a Java runtime, set memory limit
 
 If this is a brand new server, Mojang requires accepting the EULA. CraftConsole detects the
 prompt and shows a banner with an Accept button; start the server again afterwards.
+
+---
+
+## Attaching to a server via RCON
+
+If the server is already running — on this machine or another — CraftConsole doesn't have to
+have started it. Create a profile, switch its mode from **Managed** to **Remote**, and give it
+the host, RCON port and password from the server's `server.properties`
+(`enable-rcon=true`, `rcon.port`, `rcon.password`).
+
+RCON gives commands and their replies, and nothing else — no log stream, no filesystem, no
+process to restart. The panel is upfront about this: the console shows a transcript rather
+than a live log, the config editor and plugin list explain why they're empty, and controls
+that don't apply (Restart, the config editor, IP bans) are disabled with a reason rather than
+just failing when clicked. The online player list, moderation, and the whitelist still work —
+those are just commands.
+
+> RCON has no encryption of its own; the password crosses the network in the clear the same
+> way the panel's own traffic does (see the TLS note below). Only point it at a server on a
+> network you trust.
 
 ---
 
@@ -154,6 +175,15 @@ by hand at least once:
 6. Run a command (`say hello`) and see the reply.
 7. Take a backup, stop the server, restore it, and start again.
 8. Stop the server and confirm it shuts down cleanly rather than being terminated.
+9. Enable RCON in that server's `server.properties`, start it *outside* the panel, and attach
+   with a Remote profile. Confirm: authentication; a command and its reply; the player list
+   appearing and updating as someone joins and leaves; a kick and a whitelist change taking
+   effect; and that the config editor, plugins and Restart all explain themselves rather than
+   appearing blank or silently failing.
+10. Try a wrong RCON password — it should reject clearly and not appear anywhere in the panel's
+    log file.
+11. Restart the panel and reconnect the Remote profile without being asked for the password
+    again.
 
 ---
 
@@ -176,8 +206,9 @@ clean runner, and publishes with `SHA256SUMS`.
 ## Known limitations
 
 - **No TLS.** See above.
-- **No RCON.** CraftConsole can only manage a server it started itself; it cannot attach to
-  an already-running one.
+- **RCON connections are unencrypted**, same as the panel's own traffic — see above.
+- **One server at a time.** CraftConsole manages or attaches to a single server; running
+  several profiles simultaneously needs several instances of the panel.
 - Machine CPU and memory gauges work on Windows and Linux. Other platforms show them as
   unavailable rather than guessing.
 - Player geolocation calls `ipinfo.io` without an API key. It is best-effort, rate-limited,
