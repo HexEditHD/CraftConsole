@@ -76,8 +76,12 @@ public class TlsCertificateProviderTests : IDisposable
         Assert.Contains("localhost", sanText);
         Assert.Contains("127.0.0.1", sanText);
 
-        var eku = cert.Extensions["2.5.29.37"] ?? throw new InvalidOperationException("No EKU extension found.");
-        Assert.Contains("1.3.6.1.5.5.7.3.1", eku.Format(false));
+        // Re-parsed into the typed extension and checked by Oid.Value, not eku.Format(false) —
+        // that formats via the platform's OID name database too (Linux/OpenSSL renders this
+        // same OID as the string "TLS Web Server Authentication" rather than its numeric form).
+        var ekuRaw = cert.Extensions["2.5.29.37"] ?? throw new InvalidOperationException("No EKU extension found.");
+        var eku = new X509EnhancedKeyUsageExtension(ekuRaw, ekuRaw.Critical);
+        Assert.Contains(eku.EnhancedKeyUsages.Cast<Oid>(), oid => oid.Value == "1.3.6.1.5.5.7.3.1");
     }
 
     [Fact]
