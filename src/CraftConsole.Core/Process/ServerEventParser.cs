@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CraftConsole.Core.Models;
 using CraftConsole.Core.Players;
@@ -17,8 +18,10 @@ public static class ServerEventParser
     private static readonly Regex PlayerJoin  = new(@"^(?<name>\w+) joined the game\s*$", RegexOptions.Compiled);
     private static readonly Regex PlayerLeave = new(@"^(?<name>\w+) left the game\s*$",  RegexOptions.Compiled);
     private static readonly Regex PlayerChat  = new(@"^<(?<name>\w+)> (?<msg>.+)$", RegexOptions.Compiled);
-    private static readonly Regex ServerReady = new(@"Done \(\d+\.\d+s\)!", RegexOptions.Compiled);
-    private static readonly Regex Overloaded  = new(@"Can't keep up! Is the server overloaded\? Running (?<ms>[\d.]+)ms", RegexOptions.Compiled);
+    // Anchored. Unanchored, a player chatting "Done (1.0s)!" flipped a Starting
+    // server to Running; the same trick faked overload warnings.
+    private static readonly Regex ServerReady = new(@"^Done \(\d+[.,]\d+s\)!", RegexOptions.Compiled);
+    private static readonly Regex Overloaded  = new(@"^Can't keep up! Is the server overloaded\? Running (?<ms>[\d.,]+)ms", RegexOptions.Compiled);
 
     public static ServerEvent? TryParse(ConsoleEntry entry)
     {
@@ -47,13 +50,22 @@ public static class ServerEventParser
         if (PlayerLeave.Match(msg) is { Success: true } leave)
             return new PlayerLeftEvent(leave.Groups["name"].Value);
 
+        // Checked before the server-state patterns below so a chat line can never be
+        // mistaken for server output.
         if (PlayerChat.Match(msg) is { Success: true } chat)
             return new PlayerChatEvent(chat.Groups["name"].Value, chat.Groups["msg"].Value);
 
         if (ServerReady.IsMatch(msg))
             return new ServerReadyEvent();
 
-        if (Overloaded.Match(msg) is { Success: true } ov && double.TryParse(ov.Groups["ms"].Value, out var ms))
+        // InvariantCulture: a server logging "2043,5ms" under a comma-decimal locale
+        // silently failed to parse, dropping the event entirely.
+        if (Overloaded.Match(msg) is { Success: true } ov
+            && double.TryParse(
+                ov.Groups["ms"].Value.Replace(',', '.'),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var ms))
             return new ServerOverloadedEvent(ms);
 
         return null;

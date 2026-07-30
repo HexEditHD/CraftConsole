@@ -2,16 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/CraftConsole.Core/CraftConsole.Core.csproj" />
     <Project Path="src/CraftConsole.Infrastructure/CraftConsole.Infrastructure.csproj" />
-    <Project Path="src/CraftConsole.Modules.Backup/CraftConsole.Modules.Backup.csproj" />
-    <Project Path="src/CraftConsole.Modules.Console/CraftConsole.Modules.Console.csproj" />
-    <Project Path="src/CraftConsole.Modules.Dashboard/CraftConsole.Modules.Dashboard.csproj" />
-    <Project Path="src/CraftConsole.Modules.Editor/CraftConsole.Modules.Editor.csproj" />
-    <Project Path="src/CraftConsole.Modules.Issues/CraftConsole.Modules.Issues.csproj" />
-    <Project Path="src/CraftConsole.Modules.Players/CraftConsole.Modules.Players.csproj" />
-    <Project Path="src/CraftConsole.Modules.Plugins/CraftConsole.Modules.Plugins.csproj" />
-    <Project Path="src/CraftConsole.Modules.Scheduler/CraftConsole.Modules.Scheduler.csproj" />
-    <Project Path="src/CraftConsole.Modules.Server/CraftConsole.Modules.Server.csproj" />
-    <Project Path="src/CraftConsole.Modules.Settings/CraftConsole.Modules.Settings.csproj" />
-    <Project Path="src/CraftConsole/CraftConsole.csproj" />
+    <Project Path="src/CraftConsole.Web/CraftConsole.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CraftConsole.FakeServer/CraftConsole.FakeServer.csproj" />
+    <Project Path="tests/CraftConsole.Tests/CraftConsole.Tests.csproj" />
   </Folder>
 </Solution>

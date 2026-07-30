@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "craftconsole-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/CraftConsole.Web", "--no-launch-profile", "--", "--environment", "Development", "--no-browser"],
+      "port": 5178
+    }
+  ]
+}

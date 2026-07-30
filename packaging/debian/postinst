@@ -1,0 +1,69 @@
+#!/bin/sh
+# Built with plain dpkg-deb, so there is no #DEBHELPER# substitution here —
+# unit registration is done explicitly below.
+set -e
+
+CC_USER=craftconsole
+CC_GROUP=craftconsole
+CC_DATA=/var/lib/craftconsole
+CC_UNIT=craftconsole.service
+
+case "$1" in
+  configure)
+    # Idempotent: this runs again on every upgrade, so only create what is missing.
+    if ! getent group "$CC_GROUP" >/dev/null; then
+      addgroup --system "$CC_GROUP"
+    fi
+
+    if ! getent passwd "$CC_USER" >/dev/null; then
+      adduser --system \
+              --ingroup "$CC_GROUP" \
+              --home "$CC_DATA" \
+              --no-create-home \
+              --gecos "CraftConsole server panel" \
+              --disabled-password \
+              "$CC_USER"
+    fi
+
+    mkdir -p "$CC_DATA"
+    chown -R "$CC_USER":"$CC_GROUP" "$CC_DATA"
+    # Holds the password hash, server profiles and backups.
+    chmod 750 "$CC_DATA"
+    chmod 755 /opt/craftconsole/CraftConsole
+
+    # Only touch systemd when it is actually the running init (skips containers
+    # and chroots, where systemctl would fail).
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
+
+      if [ -z "$2" ]; then
+        # First install: enable and start.
+        systemctl enable "$CC_UNIT" >/dev/null 2>&1 || true
+        systemctl start "$CC_UNIT" >/dev/null 2>&1 || true
+      else
+        # Upgrade: restart onto the new binary, but only if it was running.
+        # An administrator who deliberately stopped it stays stopped.
+        if systemctl is-active --quiet "$CC_UNIT"; then
+          systemctl restart "$CC_UNIT" >/dev/null 2>&1 || true
+        fi
+      fi
+    fi
+
+    echo ""
+    echo "CraftConsole is listening on http://127.0.0.1:5178"
+    echo "Open it from this machine, or forward the port over SSH:"
+    echo "  ssh -L 5178:127.0.0.1:5178 $(id -un)@<this-host>"
+    echo "You will be asked to set a password on first visit."
+    echo ""
+    ;;
+
+  abort-upgrade|abort-remove|abort-deconfigure)
+    ;;
+
+  *)
+    echo "postinst called with unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

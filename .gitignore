@@ -21,3 +21,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Publish / packaging output
+publish/
+*.zip
+*.deb
+TestResults/
+
+# Local agent settings (launch.json is committed; this one is per-machine)
+.claude/settings.local.json

@@ -3,57 +3,207 @@ name: Release
 on:
   push:
     tags:
+      # Accepts 1.2.3 and prereleases such as 1.2.3-rc1.
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions:
+  contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
+  # ── Gate ────────────────────────────────────────────────────────────────
+  # Nothing is published unless this passes. The previous workflow cut releases
+  # without running a single test.
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          fetch-depth: 0   # full history for release notes
+          global-json-file: global.json
+      - run: dotnet test CraftConsole.slnx -c Release
 
-      - name: Extract version from tag
-        id: ver
-        shell: bash
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      deb_version: ${{ steps.v.outputs.deb_version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - id: v
         run: |
-          TAG=${GITHUB_REF_NAME}          # e.g. v1.2.3
-          VERSION=${TAG#v}               # strip leading 'v' → 1.2.3
-          echo "tag=$TAG"       >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"          # v1.2.3 or v1.2.3-rc1
+          VERSION="${TAG#v}"                # 1.2.3   or 1.2.3-rc1
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+          # Debian sorts '~' BEFORE the release and '-' after, so a hyphenated
+          # prerelease would outrank the final version it precedes.
+          DEB_VERSION="${VERSION/-/\~}"
+
+          if [ "$VERSION" = "${VERSION%-*}" ]; then PRERELEASE=false; else PRERELEASE=true; fi
+
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "deb_version=$DEB_VERSION"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "tag=$TAG version=$VERSION deb=$DEB_VERSION prerelease=$PRERELEASE"
+
+  # ── Windows single-file executable ──────────────────────────────────────
+  build-windows:
+    name: Build windows-x64
+    needs: [test, version]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          global-json-file: global.json
 
-      - name: Publish (win-x64, self-contained, single file)
+      - name: Publish
         shell: pwsh
         run: |
-          dotnet publish src/CraftConsole/CraftConsole.csproj `
+          dotnet publish src/CraftConsole.Web/CraftConsole.Web.csproj `
             --configuration Release `
             --runtime win-x64 `
-            --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=${{ needs.version.outputs.version }} `
             -p:DebugType=None `
             -p:DebugSymbols=false `
-            -p:Version=${{ steps.ver.outputs.version }} `
-            --output ./publish
+            --output publish
 
-      - name: Zip artifact
+      - name: Verify it is actually one file
         shell: pwsh
         run: |
-          $zip = "CraftConsole-${{ steps.ver.outputs.tag }}-win-x64.zip"
-          Compress-Archive -Path ./publish/* -DestinationPath $zip
-          echo "ZIP=$zip" >> $env:GITHUB_ENV
+          $files = Get-ChildItem publish -Recurse -File
+          $files | Select-Object Name, Length
+          if ($files.Count -ne 1) {
+            throw "Expected a single published file, found $($files.Count). Static assets are meant to be embedded."
+          }
 
-      - name: Create GitHub Release
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item publish/CraftConsole.exe "dist/CraftConsole-${{ needs.version.outputs.tag }}-win-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  # ── Debian packages ─────────────────────────────────────────────────────
+  build-deb:
+    name: Build .deb (${{ matrix.rid }})
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build package
+        run: |
+          chmod +x packaging/build-deb.sh
+          packaging/build-deb.sh "${{ needs.version.outputs.deb_version }}" "${{ matrix.rid }}" dist
+
+      # Only the native architecture can be installed on the runner; arm64 gets
+      # a structural inspection instead.
+      - name: Install, verify and purge (amd64 only)
+        if: matrix.rid == 'linux-x64'
+        run: |
+          set -euo pipefail
+          DEB=$(ls dist/*.deb)
+          sudo apt-get install -y "$DEB"
+
+          sudo systemctl start craftconsole.service
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:5178/api/auth/status; then break; fi
+            if [ "$i" -eq 30 ]; then
+              sudo journalctl -u craftconsole --no-pager -n 60; exit 1
+            fi
+            sleep 1
+          done
+          sudo systemctl is-active --quiet craftconsole.service
+
+          sudo apt-get purge -y craftconsole
+          ! test -e /var/lib/craftconsole
+          ! getent passwd craftconsole >/dev/null
+
+      - name: Inspect package
+        run: |
+          DEB=$(ls dist/*.deb)
+          dpkg-deb --info "$DEB"
+          dpkg-deb --contents "$DEB"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.rid }}
+          path: dist/*.deb
+
+  # ── Publish ─────────────────────────────────────────────────────────────
+  release:
+    name: Publish release
+    needs: [version, build-windows, build-deb]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect and checksum
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          find artifacts -type f \( -name '*.exe' -o -name '*.deb' \) -exec cp {} dist/ \;
+          cd dist
+          sha256sum * > SHA256SUMS
+          ls -la
+          cat SHA256SUMS
+
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          name: "CraftConsole ${{ steps.ver.outputs.tag }}"
+          name: CraftConsole ${{ needs.version.outputs.tag }}
           generate_release_notes: true
-          files: ${{ env.ZIP }}
+          prerelease: ${{ needs.version.outputs.prerelease }}
+          files: dist/*
+          body: |
+            ## Install
+
+            **Windows** — download `CraftConsole-${{ needs.version.outputs.tag }}-win-x64.exe` and run it.
+            It is a single self-contained file; no .NET runtime needed.
+
+            **Debian / Ubuntu** — download the `.deb` for your architecture, then:
+
+            ```
+            sudo apt install ./craftconsole_${{ needs.version.outputs.deb_version }}_amd64.deb
+            ```
+
+            It installs a systemd service listening on `http://127.0.0.1:5178`, running as a
+            dedicated `craftconsole` user with data in `/var/lib/craftconsole`. The .NET
+            runtime is bundled.
+
+            On first visit you are asked to set a password. The panel binds to loopback;
+            to reach it from another machine, forward the port over SSH:
+
+            ```
+            ssh -L 5178:127.0.0.1:5178 you@your-server
+            ```
+
+            There is no TLS, so do not expose it directly to an untrusted network.
+
+            Verify downloads against `SHA256SUMS`.

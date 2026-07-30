@@ -4,7 +4,7 @@ namespace CraftConsole.Core.Java;
 
 public static class JavaInstallationDetector
 {
-    private static readonly string[] ScanDirectories =
+    private static readonly string[] WindowsScanDirectories =
     [
         @"C:\Program Files\Java",
         @"C:\Program Files\Eclipse Adoptium",
@@ -14,6 +14,16 @@ public static class JavaInstallationDetector
         @"C:\Program Files\Amazon Corretto",
     ];
 
+    // Debian/Ubuntu/RHEL-family package layout; update-alternatives (below) covers
+    // most distros' actual java registrations, this is a fallback for direct installs.
+    private static readonly string[] LinuxScanDirectories =
+    [
+        "/usr/lib/jvm",
+        "/opt/java",
+    ];
+
+    private static string JavaExecutableName => OperatingSystem.IsWindows() ? "java.exe" : "java";
+
     public static async Task<List<JavaInstallation>> DetectAsync(
         CancellationToken ct = default)
     {
@@ -22,24 +32,29 @@ public static class JavaInstallationDetector
         // 1. JAVA_HOME
         var javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
         if (!string.IsNullOrWhiteSpace(javaHome))
-            candidates.Add(Path.Combine(javaHome, "bin", "java.exe"));
+            candidates.Add(Path.Combine(javaHome, "bin", JavaExecutableName));
 
-        // 2. PATH entries
+        // 2. PATH entries (Path.PathSeparator is ';' on Windows, ':' on Unix)
         var pathVar = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in pathVar.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var dir in pathVar.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
-            var candidate = Path.Combine(dir.Trim(), "java.exe");
+            var candidate = Path.Combine(dir.Trim(), JavaExecutableName);
             if (File.Exists(candidate))
                 candidates.Add(candidate);
         }
 
-        // 3. Common Windows install directories — scan one level deep
-        foreach (var root in ScanDirectories)
+        // 3. update-alternatives — lists every java registered with the system,
+        // not just the one currently active on PATH (Debian/Ubuntu/RHEL-family)
+        if (!OperatingSystem.IsWindows())
+            candidates.AddRange(await ListUpdateAlternativesAsync(ct));
+
+        // 4. Common install directories — scan one level deep
+        foreach (var root in OperatingSystem.IsWindows() ? WindowsScanDirectories : LinuxScanDirectories)
         {
             if (!Directory.Exists(root)) continue;
             foreach (var subDir in Directory.EnumerateDirectories(root))
             {
-                var candidate = Path.Combine(subDir, "bin", "java.exe");
+                var candidate = Path.Combine(subDir, "bin", JavaExecutableName);
                 if (File.Exists(candidate))
                     candidates.Add(candidate);
             }
@@ -64,6 +79,31 @@ public static class JavaInstallationDetector
         }
 
         return results;
+    }
+
+    private static async Task<List<string>> ListUpdateAlternativesAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var proc = new System.Diagnostics.Process();
+            proc.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "update-alternatives",
+                Arguments = "--list java",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            proc.Start();
+            var output = await proc.StandardOutput.ReadToEndAsync(ct);
+            await proc.WaitForExitAsync(ct);
+            return [.. output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+        }
+        catch
+        {
+            return []; // not installed / not on this distro — other scans still run
+        }
     }
 
     private static async Task<JavaInstallation?> ProbeAsync(
