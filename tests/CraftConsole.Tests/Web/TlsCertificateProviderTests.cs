@@ -68,12 +68,15 @@ public class TlsCertificateProviderTests : IDisposable
         Assert.True(cert.HasPrivateKey);
         Assert.True(cert.NotAfter > DateTime.UtcNow.AddYears(4));
 
-        var san = cert.Extensions.OfType<X509Extension>().First(e => e.Oid?.FriendlyName == "Subject Alternative Name");
+        // Looked up by OID value, not Oid.FriendlyName — the friendly-name lookup table is
+        // platform-specific (populated on Windows, empty for these OIDs under Linux's
+        // OpenSSL-backed implementation), while the dotted OID itself is portable.
+        var san = cert.Extensions["2.5.29.17"] ?? throw new InvalidOperationException("No SAN extension found.");
         var sanText = san.Format(false);
         Assert.Contains("localhost", sanText);
         Assert.Contains("127.0.0.1", sanText);
 
-        var eku = cert.Extensions.OfType<X509Extension>().First(e => e.Oid?.FriendlyName == "Enhanced Key Usage");
+        var eku = cert.Extensions["2.5.29.37"] ?? throw new InvalidOperationException("No EKU extension found.");
         Assert.Contains("1.3.6.1.5.5.7.3.1", eku.Format(false));
     }
 
