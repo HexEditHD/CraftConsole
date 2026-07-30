@@ -6,6 +6,12 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "src/CraftConsole.Web", "--no-launch-profile", "--", "--environment", "Development", "--no-browser"],
       "port": 5178
+    },
+    {
+      "name": "docs-static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8099", "--directory", "docs", "--bind", "127.0.0.1"],
+      "port": 8099
     }
   ]
 }

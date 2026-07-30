@@ -3,9 +3,36 @@
 A web control panel for Minecraft servers. It runs on the machine hosting your server,
 listens on localhost, and you drive it from a browser.
 
-Start and stop the server, watch its console live, run commands, manage players and
-plugins, edit configuration files, schedule tasks, and take and restore backups. It can also
-attach to a server it did not start itself over RCON — see below.
+Launch a server or attach to one already running, then manage it end to end — console,
+players, files, plugins, backups and scheduled tasks — all from one password-protected panel.
+
+---
+
+## Features
+
+- **Server control** — profiles in Managed or Remote (RCON) mode, start/stop/restart, a
+  guided server-JAR download (Vanilla, Paper and Purpur auto-download with a version picker),
+  and Java runtime detection with one-click downloads.
+- **Live console** — streamed output with level filtering and search, coloured chat names, and
+  a command bar with `/`-autocomplete and history.
+- **Players and moderation** — an online roster with IP, geolocation and join time; kick, ban
+  and ban-IP with an optional reason; banned-player and banned-IP lists with pardon; a
+  whitelist with an enforcement toggle.
+- **Files and plugins** — a config editor jailed to the server's own directory (allowlisted
+  extensions, 2 MB cap), and a plugin browser that reads each jar's `plugin.yml` and can
+  disable one without deleting it.
+- **Automation** — backup jobs with on-demand runs and restore into a chosen directory, and a
+  scheduler with interval/daily/player-join/server-ready triggers and command/broadcast/restart
+  actions.
+- **Diagnostics** — a live dashboard (machine and process CPU/RAM, uptime, player count) and an
+  issues feed that distills warnings and errors out of the console automatically.
+- **Security** — a single operator password (PBKDF2-SHA256), server-held sessions, a per-IP
+  lockout after repeated failures, loopback-only first-run setup, and RCON passwords encrypted
+  at rest.
+
+A connection that can't do something — RCON has no filesystem or log stream, for example —
+says so explicitly rather than failing silently or showing an empty list. See
+[Attaching to a server via RCON](#attaching-to-a-server-via-rcon) below.
 
 ---
 
