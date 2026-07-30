@@ -867,7 +867,7 @@
       <div class="feature-detail-source">
         <p><strong>What it does.</strong> A single operator password (PBKDF2-SHA256, 210,000 iterations) required for every request once set; server-held sessions; a lockout per IP after 5 failed attempts. Settings also covers console display (timestamps, auto-scroll, buffer size) and per-level colour customisation.</p>
         <p><strong>How it works.</strong> First run is loopback-only, so setup can't be hijacked over the network even if the panel is bound wider afterwards.</p>
-        <p><strong>Limits.</strong> There's no TLS — use an SSH tunnel or a trusted network to reach the panel from elsewhere.</p>
+        <p><strong>Limits.</strong> TLS is self-signed by default — expect a one-time browser warning unless you upload your own certificate in Settings.</p>
       </div>
     </div>
 
@@ -922,8 +922,9 @@
     <a href="https://github.com/HexEditHD/CraftConsole" class="btn btn-secondary">Star on GitHub ★</a>
   </div>
   <p style="margin-top:18px;font-size:12px;opacity:.6;max-width:520px;margin-left:auto;margin-right:auto">
-    The panel listens on localhost and is password protected. To reach a headless server,
-    forward the port over SSH — there is no TLS yet, so don't expose it directly.
+    The panel listens on localhost, is password protected, and serves itself a self-signed
+    TLS certificate by default. To reach a headless server, forward the port over SSH, or
+    upload your own certificate in Settings.
   </p>
 </div>
 

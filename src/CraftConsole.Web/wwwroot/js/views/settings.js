@@ -12,6 +12,73 @@ const SWATCHES = {
 
 const DEFAULTS = { colorInfo: '#94A3B8', colorWarn: '#FB923C', colorError: '#F87171', colorPlayer: '#22C55E' };
 
+function tlsCard() {
+  const body = h('div', { class: 'tls-body' }, h('p', { class: 'muted small' }, 'Loading…'));
+  const card = h('div', { class: 'card' },
+    h('div', { class: 'card-title' }, 'TLS certificate'),
+    body);
+
+  const renderPinned = status => {
+    body.replaceChildren(
+      h('p', { class: 'text-2 small' },
+        `Certificate pinned via --cert-path — expires ${new Date(status.expiry).toLocaleDateString()}.`),
+      h('p', { class: 'muted small' }, 'Remove --cert-path to manage the certificate from here instead.'));
+  };
+
+  const renderManaged = status => {
+    const sourceLabel = status.source === 'uploaded' ? 'Uploaded certificate' : 'Self-signed (auto-generated)';
+    const certFile = h('input', { class: 'input', type: 'file', accept: '.pem,.crt,.cer,.txt' });
+    const keyFile = h('input', { class: 'input', type: 'file', accept: '.pem,.key,.txt' });
+    const submit = h('button', { class: 'btn primary sm', type: 'submit' }, 'Upload');
+
+    const form = h('form', {
+      onsubmit: async e => {
+        e.preventDefault();
+        const cert = certFile.files[0];
+        const key = keyFile.files[0];
+        if (!cert || !key) { toast('Choose both a certificate and a private key file.', 'err'); return; }
+
+        const formData = new FormData();
+        formData.append('certificate', cert);
+        formData.append('key', key);
+
+        submit.disabled = true;
+        try {
+          const result = await api.upload('/api/tls/certificate', formData);
+          toast('Certificate updated — now serving it, no restart needed.');
+          renderManaged(result);
+        } catch (err) { toast(err.message, 'err'); }
+        finally { submit.disabled = false; }
+      },
+    },
+      h('div', { class: 'field-row' },
+        h('div', { class: 'field' }, h('label', {}, 'Certificate (.pem/.crt — may include the full chain)'), certFile),
+        h('div', { class: 'field' }, h('label', {}, 'Private key (.pem/.key)'), keyFile)),
+      submit);
+
+    body.replaceChildren(
+      h('p', { class: 'text-2 small' },
+        `${sourceLabel} — expires ${new Date(status.expiry).toLocaleDateString()}.`),
+      h('p', { class: 'muted small' },
+        'Self-signed certificates trigger a one-time browser warning; that’s expected. Upload your own certificate and key (e.g. from Let’s Encrypt or an internal CA) to replace it — it takes effect immediately, no restart.'),
+      form);
+  };
+
+  (async () => {
+    try {
+      const status = await api.get('/api/tls/status');
+      if (status.pinned) renderPinned(status);
+      else renderManaged(status);
+    } catch {
+      body.replaceChildren(
+        h('p', { class: 'muted small' },
+          'Running in plain HTTP mode (started with --http). No TLS certificate is in use.'));
+    }
+  })();
+
+  return card;
+}
+
 function securityCard() {
   const current = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'Current password' });
   const next = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'New password (min. 8 characters)' });
@@ -145,9 +212,9 @@ export default {
         'CraftConsole — a local web panel for managing Minecraft servers. ',
         'Settings, profiles, tasks, and backups persist in %APPDATA%\\CraftConsole.'),
       h('p', { class: 'muted small', style: { marginTop: '8px' } },
-        'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel, since there is still no TLS here.'));
+        'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
     el.append(h('div', { class: 'grid', style: { maxWidth: '660px' } },
-      consoleCard, colorsCard, securityCard(), aboutCard));
+      consoleCard, colorsCard, securityCard(), tlsCard(), aboutCard));
   },
 };
