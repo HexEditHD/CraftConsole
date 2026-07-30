@@ -12,7 +12,8 @@ players, files, plugins, backups and scheduled tasks — all from one password-p
 
 - **Server control** — profiles in Managed or Remote (RCON) mode, start/stop/restart, a
   guided server-JAR download (Vanilla, Paper and Purpur auto-download with a version picker),
-  and Java runtime detection with one-click downloads.
+  and Java runtime detection with a real install — one click and a UAC prompt on Windows,
+  copy-pasteable `apt` commands on Linux.
 - **Live console** — streamed output with level filtering and search, coloured chat names, and
   a command bar with `/`-autocomplete and history.
 - **Players and moderation** — an online roster with IP, geolocation and join time; kick, ban
@@ -85,7 +86,9 @@ PBKDF2-SHA256 and stored on the machine only — **there is no recovery**. To re
 delete `auth.json` from the data directory and restart.
 
 Then open **Server** to create a profile: point it at a server JAR (or download one — Vanilla,
-Paper and Purpur can be fetched directly), pick a Java runtime, set memory limits, and start.
+Paper and Purpur can be fetched directly), pick a Java runtime (or get one — Windows installs it
+for you after one UAC prompt; Linux gets a ready-to-run `apt` command instead, since the panel
+runs unprivileged there by design), set memory limits, and start.
 
 If this is a brand new server, Mojang requires accepting the EULA. CraftConsole detects the
 prompt and shows a banner with an Accept button; start the server again afterwards.
