@@ -127,7 +127,11 @@ jobs:
         run: |
           set -euo pipefail
           DEB=$(ls dist/*.deb)
-          sudo apt-get install -y "$DEB"
+          # apt-get parses a bare "dist/pkg.deb" as "pkg.deb from release dist"
+          # (the same syntax as "apt install foo/unstable") rather than a path,
+          # and fails with "Release ... for 'dist' was not found". The ./
+          # prefix is what disambiguates it as a filesystem path.
+          sudo apt-get install -y "./$DEB"
 
           sudo systemctl start craftconsole.service
           for i in $(seq 1 30); do
