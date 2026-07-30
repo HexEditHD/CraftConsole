@@ -77,9 +77,9 @@ public static class SetupApi
         });
 
         // ── Java ──────────────────────────────────────────────────────────
-        app.MapGet("/api/setup/java/detect", async () =>
+        app.MapGet("/api/setup/java/detect", async (CancellationToken ct) =>
         {
-            var found = await JavaInstallationDetector.DetectAsync();
+            var found = await JavaInstallationDetector.DetectAsync(ct);
             return Results.Json(found
                 .OrderByDescending(j => j.MajorVersion)
                 .Select(j => new { j.ExecutablePath, j.DisplayVersion, j.MajorVersion, j.Label }),
