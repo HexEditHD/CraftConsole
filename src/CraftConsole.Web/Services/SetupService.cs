@@ -1,5 +1,7 @@
+using CraftConsole.Core.Java;
 using CraftConsole.Core.Models;
 using CraftConsole.Infrastructure.Http;
+using CraftConsole.Infrastructure.Java;
 
 namespace CraftConsole.Web.Services;
 
@@ -135,10 +137,18 @@ public sealed class SetupService
                     Publish("java", "downloading", p, $"Downloading {fileName}…"));
 
                 await _javaDownload.DownloadAsync(url, destPath, progress, cts.Token);
-                var doneMessage = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-                    ? "Saved to Downloads. Run the installer to complete setup."
-                    : $"Saved to Downloads. Extract it (tar xzf {fileName}) and point a profile's Java path at the java binary inside its bin/ folder.";
-                Publish("java", "done", 1, doneMessage, new { Path = destPath });
+
+                if (OperatingSystem.IsWindows())
+                {
+                    await InstallOnWindowsAsync(destPath, fileName, cts.Token);
+                }
+                else
+                {
+                    var doneMessage = OperatingSystem.IsMacOS()
+                        ? "Saved to Downloads. Run the installer to complete setup."
+                        : $"Saved to Downloads. Extract it (tar xzf {fileName}) and point a profile's Java path at the java binary inside its bin/ folder.";
+                    Publish("java", "done", 1, doneMessage, new { Path = destPath });
+                }
             }
             catch (OperationCanceledException) { Publish("java", "cancelled", 0, "Download cancelled."); }
             catch (Exception ex)
@@ -152,6 +162,39 @@ public sealed class SetupService
             }
         });
         return true;
+    }
+
+    /// <summary>
+    /// Runs the downloaded MSI elevated (one UAC prompt) instead of just telling the user to.
+    /// Always ends in a "done" phase — the download itself already succeeded by this point, so
+    /// even a declined prompt or a failed install isn't a failure of *this* operation, just one
+    /// that leaves the file for the user to run by hand (message says so either way).
+    /// </summary>
+    private async Task InstallOnWindowsAsync(string msiPath, string fileName, CancellationToken ct)
+    {
+        Publish("java", "installing", 0, "Installing…");
+        var result = await JavaInstallRunner.InstallWindowsAsync(msiPath, ct);
+
+        switch (result.Outcome)
+        {
+            case JavaInstallOutcome.Succeeded:
+                var installs = await JavaInstallationDetector.DetectAsync(ct);
+                var newest = installs.OrderByDescending(i => i.MajorVersion).FirstOrDefault();
+                Publish("java", "done", 1, "Java installed.", new { Path = msiPath, JavaPath = newest?.ExecutablePath });
+                break;
+
+            case JavaInstallOutcome.UserCancelledElevation:
+                Publish("java", "done", 1,
+                    $"Downloaded but not installed (elevation was declined). Run \"{fileName}\" from Downloads to install it yourself.",
+                    new { Path = msiPath });
+                break;
+
+            default:
+                Publish("java", "done", 1,
+                    $"Downloaded but the installer failed ({result.Detail}). Run \"{fileName}\" from Downloads to install it yourself.",
+                    new { Path = msiPath });
+                break;
+        }
     }
 
     public void Cancel(string kind)

@@ -17,6 +17,8 @@ export default {
     let javaVersions = [];
     let selectedType = null;
     let downloadedJar = null; // {jarPath, version, type}
+    let installedJavaPath = null;
+    let hostPlatform = null; // 'windows' | 'linux' | 'other', from /api/setup/java/versions
 
     // ── Profiles card ────────────────────────────────────────────────────
     const profileList = h('div', { class: 'grid' });
@@ -48,11 +50,27 @@ export default {
 
     // ── Java card ────────────────────────────────────────────────────────
     const javaList = h('div');
-    const javaSelect = h('select', { class: 'select', style: { maxWidth: '220px' } });
+    const javaSelect = h('select', { class: 'select', style: { maxWidth: '220px' }, onchange: syncJavaLinuxHint });
     const javaDlBtn = h('button', { class: 'btn', onclick: startJavaDownload }, icon('download'), 'Download');
+    const javaCancel = h('button', { class: 'btn sm ghost', style: { display: 'none' }, onclick: () => api.post('/api/setup/cancel/java') }, 'Cancel');
     const javaBar = h('div', { class: 'progress', style: { display: 'none' } }, h('div'));
     const javaMsg = h('span', {}, '');
-    const javaStatus = h('div', { class: 'dl-status' }, javaMsg, javaBar);
+    const javaStatus = h('div', { class: 'dl-status' }, javaMsg, javaBar, javaCancel);
+
+    const javaLinuxCommands = h('pre', {
+      class: 'mono', style: {
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
+        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
+        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+      },
+    });
+    const javaLinuxHint = h('div', { style: { display: 'none', marginTop: '12px' } },
+      h('div', { class: 'switch-desc' }, 'Or install it system-wide instead of downloading it here:'),
+      javaLinuxCommands,
+      h('button', {
+        class: 'btn sm ghost',
+        onclick: () => { navigator.clipboard.writeText(javaLinuxCommands.textContent); toast('Commands copied'); },
+      }, icon('copy'), 'Copy'));
 
     const javaCard = h('div', { class: 'card' },
       h('div', { class: 'card-title' },
@@ -62,7 +80,8 @@ export default {
       javaList,
       h('div', { style: { display: 'flex', gap: '8px', marginTop: '12px', alignItems: 'center' } },
         javaSelect, javaDlBtn),
-      javaStatus);
+      javaStatus,
+      javaLinuxHint);
 
     el.append(h('div', { class: 'grid' }, profilesCard, downloadCard, javaCard));
 
@@ -138,7 +157,7 @@ export default {
         name: 'My Server',
         jarPath: downloadedJar?.jarPath ?? '',
         workingDirectory: downloadedJar ? dirname(downloadedJar.jarPath) : '',
-        javaPath: javaInstalls[0]?.executablePath ?? 'java',
+        javaPath: installedJavaPath ?? javaInstalls[0]?.executablePath ?? 'java',
         minRamMb: 512, maxRamMb: 2048,
         minecraftVersion: downloadedJar?.version ?? '',
         jvmArguments: '',
@@ -337,11 +356,29 @@ export default {
     }
 
     async function loadJavaVersions() {
-      try { javaVersions = await api.get('/api/setup/java/versions'); }
-      catch { javaVersions = []; }
+      try {
+        const data = await api.get('/api/setup/java/versions');
+        hostPlatform = data.platform;
+        javaVersions = data.versions ?? [];
+      } catch { javaVersions = []; }
       javaSelect.innerHTML = '';
       for (const v of javaVersions)
         javaSelect.append(h('option', { value: v.major }, v.displayName));
+      syncJavaLinuxHint();
+    }
+
+    // Debian/Ubuntu only — matches what this project actually packages and ships.
+    function syncJavaLinuxHint() {
+      const major = parseInt(javaSelect.value, 10) || javaVersions[0]?.major;
+      if (hostPlatform !== 'linux' || !major) { javaLinuxHint.style.display = 'none'; return; }
+      javaLinuxHint.style.display = '';
+      javaLinuxCommands.textContent =
+        'sudo apt-get install -y wget apt-transport-https gpg\n' +
+        'wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/adoptium.gpg\n' +
+        'echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= \'/^VERSION_CODENAME/{print$2}\' /etc/os-release) main" | sudo tee /etc/apt/sources.list.d/adoptium.list\n' +
+        'sudo apt-get update\n' +
+        `sudo apt-get install -y temurin-${major}-jdk\n\n` +
+        "Not on Debian/Ubuntu? See Adoptium's install docs for your distro.";
     }
 
     async function startJavaDownload() {
@@ -359,17 +396,17 @@ export default {
       const msg = isServer ? dlMsg : javaMsg;
       const bar = isServer ? dlBar : javaBar;
       const btn = isServer ? dlBtn : javaDlBtn;
-      const cancel = isServer ? dlCancel : null;
+      const cancel = isServer ? dlCancel : javaCancel;
 
       msg.textContent = p.message;
-      if (p.phase === 'downloading' || p.phase === 'resolving') {
+      if (p.phase === 'downloading' || p.phase === 'resolving' || p.phase === 'installing') {
         bar.style.display = '';
         bar.firstChild.style.width = `${Math.round(p.progress * 100)}%`;
-        if (cancel) cancel.style.display = '';
+        cancel.style.display = p.phase === 'installing' ? 'none' : ''; // already elevating/installing — too late to cancel
         btn.disabled = true;
       } else {
         bar.style.display = 'none';
-        if (cancel) cancel.style.display = 'none';
+        cancel.style.display = 'none';
         btn.disabled = isServer && !selectedType?.hasAutoDownload;
 
         if (p.phase === 'done') {
@@ -382,7 +419,17 @@ export default {
               onclick: function () { this.remove(); openProfileEditor(null); },
             }, icon('plus'), `Create profile from ${p.extra.version}`));
           }
-          if (!isServer) detectJava();
+          if (!isServer) {
+            if (p.extra?.javaPath) {
+              installedJavaPath = p.extra.javaPath;
+              msg.textContent = '';
+              javaStatus.prepend(h('button', {
+                class: 'btn sm primary',
+                onclick: function () { this.remove(); openProfileEditor(null); },
+              }, icon('plus'), 'Use this Java for a profile'));
+            }
+            detectJava();
+          }
         }
         if (p.phase === 'error') toast(p.message, 'err');
       }

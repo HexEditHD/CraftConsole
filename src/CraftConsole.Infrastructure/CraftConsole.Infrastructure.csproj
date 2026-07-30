@@ -17,4 +17,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Lets the tests reach JavaInstallRunner's internal exit-code classifier without making
+         it a public API surface nothing else needs. -->
+    <InternalsVisibleTo Include="CraftConsole.Tests" />
+  </ItemGroup>
+
 </Project>
