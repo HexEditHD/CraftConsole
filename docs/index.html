@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CraftConsole — Minecraft Server Management</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='2' width='28' height='28' rx='7' fill='%2310B981'/%3E%3Crect x='2' y='16' width='28' height='14' rx='7' fill='%23065F46'/%3E%3Crect x='9' y='9' width='5' height='5' fill='%23064E3B'/%3E%3Crect x='18' y='9' width='5' height='5' fill='%23064E3B'/%3E%3C/svg%3E"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -11,19 +12,21 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:           #080D14;
-      --surface:      #0F1824;
-      --surface-alt:  #162035;
-      --border:       #1E2D45;
-      --separator:    #14212F;
-      --accent:       #22D3EE;
-      --accent-dim:   #0C2D38;
-      --accent-hover: #67E8F9;
-      --text-primary: #F1F5F9;
-      --text-secondary: #94A3B8;
-      --text-muted:   #4A6080;
+      --bg:           #0B0E14;
+      --surface:      #11151D;
+      --surface-alt:  #171C26;
+      --border:       #232A38;
+      --border-strong:#2F3849;
+      --separator:    #232A38;
+      --accent:       #34D399;
+      --accent-strong:#10B981;
+      --accent-deep:  #065F46;
+      --accent-dim:   #0E2A22;
+      --text-primary: #E8ECF4;
+      --text-secondary: #9AA5B8;
+      --text-muted:   #667084;
       --danger:       #F87171;
-      --warn:         #FB923C;
+      --warn:         #FBBF24;
       --info:         #60A5FA;
     }
 
@@ -38,10 +41,21 @@
       overflow-x: hidden;
     }
 
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+
+    /* ── Brand mark (shared: nav, mock topbar, footer) ── */
+    .brand-mark {
+      flex-shrink: 0; border-radius: 22%;
+      background:
+        radial-gradient(circle at 30% 28%, rgba(255,255,255,.28), transparent 42%),
+        linear-gradient(180deg, var(--accent-strong) 0%, var(--accent-strong) 52%, var(--accent-deep) 52%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.09);
+    }
 
     /* ── Nav ── */
     nav {
@@ -50,7 +64,7 @@
       background: rgba(6,10,16,0.85);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid transparent;
-      border-image: linear-gradient(90deg, transparent, #9922D3EE 50%, transparent) 1;
+      border-image: linear-gradient(90deg, transparent, #9934D399 50%, transparent) 1;
       display: flex; align-items: center; justify-content: space-between;
       padding: 0 40px;
     }
@@ -58,13 +72,7 @@
       display: flex; align-items: center; gap: 10px;
       text-decoration: none;
     }
-    .nav-icon {
-      width: 26px; height: 26px; border-radius: 7px;
-      background: var(--accent-dim);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700;
-      color: var(--accent);
-    }
+    .nav-brand .brand-mark { width: 26px; height: 26px; }
     .nav-title {
       font-size: 14px; font-weight: 600;
       color: var(--text-primary);
@@ -92,7 +100,7 @@
     .nav-cta:hover {
       background: var(--accent) !important;
       color: var(--bg) !important;
-      box-shadow: 0 0 18px 3px rgba(34,211,238,.3);
+      box-shadow: 0 0 18px 3px rgba(52,211,153,.3);
     }
 
     /* ── Hero ── */
@@ -109,7 +117,7 @@
       content: '';
       position: absolute; inset: 0;
       background:
-        radial-gradient(ellipse 60% 40% at 50% 0%, rgba(34,211,238,.07) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 40% at 50% 0%, rgba(52,211,153,.07) 0%, transparent 70%),
         radial-gradient(ellipse 40% 60% at 80% 80%, rgba(96,165,250,.04) 0%, transparent 60%);
       pointer-events: none;
     }
@@ -117,7 +125,7 @@
     .hero::after {
       content: '';
       position: absolute; inset: 0;
-      background-image: radial-gradient(rgba(34,211,238,.08) 1px, transparent 1px);
+      background-image: radial-gradient(rgba(52,211,153,.08) 1px, transparent 1px);
       background-size: 32px 32px;
       mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 70%);
       pointer-events: none;
@@ -125,7 +133,7 @@
     .hero-badge {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--accent-dim);
-      border: 1px solid rgba(34,211,238,.2);
+      border: 1px solid rgba(52,211,153,.2);
       border-radius: 20px;
       padding: 5px 14px;
       font-size: 12px; font-weight: 600;
@@ -150,7 +158,7 @@
       position: relative; z-index: 1;
     }
     .hero h1 span {
-      background: linear-gradient(135deg, #22D3EE 0%, #67E8F9 50%, #60A5FA 100%);
+      background: linear-gradient(135deg, #34D399 0%, #6EE7B7 50%, #60A5FA 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -178,12 +186,12 @@
     .btn-primary {
       background: var(--accent-dim);
       color: var(--accent);
-      border: 1px solid rgba(34,211,238,.25);
+      border: 1px solid rgba(52,211,153,.25);
     }
     .btn-primary:hover {
       background: var(--accent);
       color: var(--bg);
-      box-shadow: 0 0 24px 4px rgba(34,211,238,.35);
+      box-shadow: 0 0 24px 4px rgba(52,211,153,.35);
     }
     .btn-secondary {
       background: var(--surface);
@@ -199,21 +207,24 @@
     .hero-preview {
       margin-top: 64px;
       position: relative; z-index: 1;
-      width: 100%; max-width: 900px;
+      width: 100%; max-width: 980px;
     }
     .preview-chrome {
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       box-shadow:
-        0 0 0 1px rgba(34,211,238,.06),
+        0 0 0 1px rgba(52,211,153,.06),
         0 40px 80px -20px rgba(0,0,0,.7),
-        0 0 80px -10px rgba(34,211,238,.1);
+        0 0 80px -10px rgba(52,211,153,.1);
       font-size: 12px;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
     }
     /* Browser chrome — the panel runs in a browser, not a desktop window */
     .pw-titlebar {
-      height: 34px; background: #040709;
+      height: 34px; background: #040709; flex-shrink: 0;
       display: flex; align-items: center; padding: 0 12px; gap: 8px;
     }
     .pw-dot { width: 9px; height: 9px; border-radius: 50%; }
@@ -225,108 +236,107 @@
       font-size: 10px; color: var(--text-muted);
       max-width: 260px; margin: 0 auto;
     }
-    /* App header */
-    .pw-header {
-      height: 44px; background: #060A10;
-      border-bottom: 1px solid transparent;
-      border-image: linear-gradient(90deg, transparent, #8822D3EE 50%, transparent) 1;
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 18px;
-    }
-    .pw-brand { display: flex; align-items: center; gap: 8px; }
-    .pw-brand-icon {
-      width: 20px; height: 20px; border-radius: 5px;
-      background: var(--accent-dim);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 10px; font-weight: 700; color: var(--accent);
-    }
-    .pw-brand-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-    .pw-chip {
-      display: flex; align-items: center; gap: 6px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 20px; padding: 3px 10px;
-    }
-    .pw-chip-dot {
-      width: 5px; height: 5px; border-radius: 50%;
-      background: var(--accent);
-      animation: pulse 1.8s ease-in-out infinite alternate;
-    }
-    .pw-chip-label { font-size: 10px; color: var(--text-secondary); font-weight: 500; }
-    /* Page area */
-    .pw-page {
-      background: var(--bg);
-      padding: 18px 22px 14px;
-    }
-    /* Section accent bar */
-    .pw-section {
-      display: flex; align-items: center; gap: 7px;
-      margin: 12px 0 8px;
-    }
-    .pw-section-bar {
-      width: 2px; height: 10px; border-radius: 1px;
-      background: var(--accent);
-    }
-    .pw-section-label {
-      font-size: 9px; font-weight: 700;
-      color: var(--text-muted); letter-spacing: 1px;
-    }
-    /* Metric cards */
-    .pw-cards2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .pw-cards3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-    .pw-card {
+    /* App body: sidebar + main, like the real shell */
+    .pw-body { display: flex; min-height: 460px; }
+    .pw-sidebar {
+      width: 152px; flex-shrink: 0;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 9px; padding: 14px;
-    }
-    .pw-card-glass {
-      background: linear-gradient(180deg, #141F30 0%, #0F1824 100%);
-      border: 1px solid var(--accent-dim);
-      border-top: 2px solid var(--accent-dim);
-      border-radius: 9px; padding: 14px;
-      box-shadow: 0 0 18px 3px rgba(34,211,238,.08);
-    }
-    .pw-metric-label {
-      font-size: 8px; font-weight: 700; letter-spacing: 1px;
-      color: var(--text-muted); text-transform: uppercase; margin-bottom: 7px;
-    }
-    .pw-metric-row { display: flex; align-items: baseline; gap: 3px; }
-    .pw-metric-val { font-size: 22px; font-weight: 800; color: var(--text-primary); line-height: 1; }
-    .pw-metric-unit { font-size: 11px; color: var(--text-muted); }
-    .pw-bar-track {
-      height: 3px; background: var(--surface-alt);
-      border-radius: 2px; margin-top: 9px; overflow: hidden;
-    }
-    .pw-bar-fill { height: 100%; border-radius: 2px; }
-    /* Arc gauge */
-    .pw-arc { width: 76px; height: 76px; position: relative; margin: 4px auto 0; }
-    .pw-arc svg { width: 100%; height: 100%; }
-    .pw-arc-center {
-      position: absolute; inset: 0;
+      border-right: 1px solid var(--border);
       display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
     }
-    .pw-arc-val { font-size: 15px; font-weight: 800; color: var(--text-primary); line-height: 1; }
-    .pw-arc-unit { font-size: 7px; color: var(--text-muted); margin-top: 1px; }
-    /* Bottom nav */
-    .pw-nav {
-      background: #060A10;
-      border-top: 1px solid transparent;
-      border-image: linear-gradient(90deg, transparent, #8822D3EE 50%, transparent) 1;
-      display: flex;
+    .pw-brand-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 13px 12px; border-bottom: 1px solid var(--border);
     }
-    .pw-tab {
-      flex: 1; display: flex; flex-direction: column;
-      align-items: center; padding: 7px 0 7px;
-      gap: 2px; position: relative;
+    .pw-brand-row .brand-mark { width: 22px; height: 22px; }
+    .pw-brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+    .pw-brand-name { font-size: 11px; font-weight: 650; color: var(--text-primary); }
+    .pw-brand-sub { font-size: 8.5px; color: var(--text-muted); }
+    .pw-sidenav { flex: 1; padding: 7px; display: flex; flex-direction: column; gap: 1px; }
+    .pw-navitem {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px; border-radius: 6px;
+      font-size: 10px; font-weight: 500; color: var(--text-secondary);
+      position: relative;
     }
-    .pw-tab-line {
-      position: absolute; top: 0; left: 25%; right: 25%;
-      height: 2px; border-radius: 0 0 2px 2px;
-      background: var(--accent);
-      box-shadow: 0 3px 10px rgba(34,211,238,.5);
+    .pw-navitem-icon { width: 12px; text-align: center; color: var(--text-muted); font-size: 10px; }
+    .pw-navitem.active { background: var(--accent-dim); color: var(--accent); }
+    .pw-navitem.active .pw-navitem-icon { color: var(--accent); }
+    .pw-navitem.active::before {
+      content: ''; position: absolute; left: -7px; top: 5px; bottom: 5px;
+      width: 2px; border-radius: 2px; background: var(--accent);
     }
-    .pw-tab-icon { font-size: 13px; }
-    .pw-tab-label { font-size: 7px; font-weight: 600; letter-spacing: .3px; }
+    .pw-navitem-badge {
+      margin-left: auto; background: rgba(248,113,113,.15); color: var(--danger);
+      font-size: 8px; font-weight: 700; padding: 0 5px; border-radius: 99px;
+    }
+    .pw-sidefoot {
+      display: flex; align-items: center; gap: 6px;
+      padding: 10px 12px; border-top: 1px solid var(--border);
+      font-size: 9px; color: var(--text-muted);
+    }
+    .pw-conn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 5px rgba(52,211,153,.7); }
+
+    .pw-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .pw-topbar {
+      height: 40px; flex-shrink: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px;
+    }
+    .pw-page-title { font-size: 12.5px; font-weight: 650; color: var(--text-primary); }
+    .pw-topbar-cluster { display: flex; align-items: center; gap: 6px; }
+    .pw-chip {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--surface-alt); border: 1px solid var(--border);
+      border-radius: 20px; padding: 3px 9px;
+      font-size: 9px; color: var(--text-secondary); font-weight: 500;
+    }
+    .pw-pill { font-size: 9px; font-weight: 650; padding: 2px 8px; border-radius: 20px; background: var(--accent-dim); color: var(--accent); }
+    .pw-mini-btn {
+      width: 18px; height: 18px; border-radius: 5px;
+      background: var(--surface-alt); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; color: var(--text-secondary);
+    }
+
+    .pw-page { flex: 1; background: var(--bg); padding: 16px; overflow: hidden; }
+    .pw-dash-hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-bottom: 9px; }
+    .pw-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 12px; }
+    .pw-tile-label {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 8px; font-weight: 700; letter-spacing: .5px;
+      color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;
+    }
+    .pw-tile-val { font-size: 18px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+    .pw-tile-unit { font-size: 10px; font-weight: 600; color: var(--text-muted); margin-left: 2px; }
+    .pw-tile-sub { font-size: 8.5px; color: var(--text-muted); margin-top: 6px; }
+    .pw-bar-track { height: 3px; background: var(--surface-alt); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .pw-bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent-strong), var(--accent)); }
+    .pw-spark { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-top: 8px; }
+    .pw-spark i { flex: 1; background: var(--accent-dim); border-radius: 1px; display: block; }
+
+    .pw-dash-row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .pw-card-wide { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 13px; }
+    .pw-card-title { font-size: 10px; font-weight: 700; color: var(--text-primary); margin-bottom: 11px; }
+    .pw-gauge-pair { display: flex; gap: 14px; justify-content: center; }
+    .pw-arc { width: 62px; height: 62px; position: relative; }
+    .pw-arc svg { width: 100%; height: 100%; }
+    .pw-arc-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .pw-arc-val { font-size: 12px; font-weight: 800; color: var(--text-primary); line-height: 1; }
+    .pw-arc-unit { font-size: 6px; color: var(--text-muted); margin-top: 1px; }
+    .pw-issue-row {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 9px; color: var(--text-secondary);
+      padding: 5px 0; border-bottom: 1px solid var(--border);
+    }
+    .pw-issue-row:last-child { border-bottom: none; }
+    .pw-badge-warn, .pw-badge-info {
+      font-size: 7.5px; font-weight: 700; padding: 1px 6px; border-radius: 99px; flex-shrink: 0;
+    }
+    .pw-badge-warn { background: rgba(251,191,36,.15); color: var(--warn); }
+    .pw-badge-info { background: rgba(96,165,250,.15); color: var(--info); }
 
     /* ── Stats bar ── */
     .stats-bar {
@@ -339,7 +349,7 @@
     .stat-item { text-align: center; }
     .stat-number {
       font-size: 2rem; font-weight: 800;
-      background: linear-gradient(135deg, #22D3EE, #60A5FA);
+      background: linear-gradient(135deg, #34D399, #60A5FA);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -379,12 +389,17 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 24px;
       transition: border-color .2s, box-shadow .2s;
     }
-    .feature-card:hover {
+    .feature-card:hover, .feature-card.is-open {
       border-color: var(--accent-dim);
-      box-shadow: 0 0 18px 3px rgba(34,211,238,.12);
+      box-shadow: 0 0 18px 3px rgba(52,211,153,.12);
+    }
+    .feature-card-trigger {
+      display: block; width: 100%; padding: 24px;
+      background: none; border: none; text-align: left;
+      cursor: pointer; font: inherit; color: inherit;
+      box-sizing: border-box; border-radius: 12px;
     }
     .feature-icon {
       width: 36px; height: 36px; border-radius: 8px;
@@ -394,37 +409,53 @@
       margin-bottom: 16px;
     }
     .feature-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
       font-size: 15px; font-weight: 700;
       margin-bottom: 8px;
     }
+    .feature-chevron {
+      color: var(--text-muted); font-size: 11px; flex-shrink: 0;
+      transition: transform .2s, color .2s;
+    }
+    .feature-card.is-open .feature-chevron { transform: rotate(180deg); color: var(--accent); }
     .feature-desc {
       font-size: 13px;
       color: var(--text-secondary);
       line-height: 1.6;
     }
+    .feature-detail-source { display: none; }
 
-    /* ── Module list ── */
-    .module-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-      margin-top: 48px;
+    /* ── Expanded feature panel (JS-inserted) ── */
+    .feature-panel {
+      grid-column: 1 / -1;
+      background: var(--surface-alt);
+      border: 1px solid var(--accent-dim);
+      border-radius: 12px;
+      padding: 28px 32px;
+      position: relative;
+      animation: panel-in .18s ease-out;
     }
-    .module-item {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 20px;
-      display: flex; align-items: center; gap: 12px;
-      transition: border-color .2s;
+    .feature-panel h3 { font-size: 17px; font-weight: 700; margin-bottom: 14px; padding-right: 34px; }
+    .feature-panel p { font-size: 13.5px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 10px; }
+    .feature-panel p:last-child { margin-bottom: 0; }
+    .feature-panel p strong { color: var(--text-primary); }
+    .feature-panel-close {
+      position: absolute; top: 22px; right: 24px;
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text-secondary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; line-height: 1;
     }
-    .module-item:hover { border-color: rgba(34,211,238,.2); }
-    .module-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--accent); flex-shrink: 0;
+    .feature-panel-close:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    @keyframes panel-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+    @media (prefers-reduced-motion: reduce) {
+      .feature-panel { animation: none; }
+      .feature-chevron { transition: none; }
     }
-    .module-name { font-size: 13px; font-weight: 600; }
-    .module-desc { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+    /* No-JS: reveal every detail inline, in document order */
+    noscript { display: block; }
 
     /* ── Tech stack ── */
     .tech-row {
@@ -449,7 +480,7 @@
     .cta-section::before {
       content: '';
       position: absolute; inset: 0;
-      background: radial-gradient(ellipse 50% 80% at 50% 50%, rgba(34,211,238,.05) 0%, transparent 70%);
+      background: radial-gradient(ellipse 50% 80% at 50% 50%, rgba(52,211,153,.05) 0%, transparent 70%);
       pointer-events: none;
     }
     .cta-section h2 {
@@ -471,6 +502,7 @@
       flex-wrap: wrap; gap: 16px;
     }
     .footer-brand { display: flex; align-items: center; gap: 8px; }
+    .footer-brand .brand-mark { width: 22px; height: 22px; }
     .footer-copy { font-size: 12px; color: var(--text-muted); }
     .footer-links { display: flex; gap: 20px; }
     .footer-links a { font-size: 12px; color: var(--text-muted); text-decoration: none; transition: color .15s; }
@@ -479,7 +511,7 @@
     /* ── Divider ── */
     .gradient-divider {
       height: 1px;
-      background: linear-gradient(90deg, transparent, #3322D3EE 50%, transparent);
+      background: linear-gradient(90deg, transparent, #3334D399 50%, transparent);
       margin: 0 auto;
       max-width: 600px;
     }
@@ -487,9 +519,14 @@
     @media (max-width: 640px) {
       nav { padding: 0 20px; }
       .nav-links { display: none; }
-      .pw-cards2, .pw-cards3 { grid-template-columns: 1fr; }
       .stats-bar { gap: 32px; }
       footer { flex-direction: column; text-align: center; }
+      .pw-body { flex-direction: column; }
+      .pw-sidebar { width: 100%; flex-direction: row; align-items: center; }
+      .pw-sidenav { display: none; }
+      .pw-sidefoot { display: none; }
+      .pw-dash-hero { grid-template-columns: 1fr 1fr; }
+      .pw-dash-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -498,12 +535,11 @@
 <!-- ── Nav ── -->
 <nav>
   <a href="#" class="nav-brand">
-    <div class="nav-icon">M</div>
+    <div class="brand-mark"></div>
     <span class="nav-title">CraftConsole</span>
   </a>
   <ul class="nav-links">
     <li><a href="#features">Features</a></li>
-    <li><a href="#modules">Modules</a></li>
     <li><a href="#stack">Stack</a></li>
     <li><a href="https://github.com/HexEditHD/CraftConsole" class="nav-cta">GitHub</a></li>
   </ul>
@@ -532,11 +568,11 @@
     </a>
   </div>
 
-  <!-- App window mock -->
+  <!-- App window mock: real shell shape — left sidebar, topbar, dashboard body -->
   <div class="hero-preview">
     <div class="preview-chrome">
 
-      <!-- Browser chrome -->
+      <!-- Browser chrome — the panel runs in a browser, no app titlebar -->
       <div class="pw-titlebar">
         <div class="pw-dot" style="background:#F87171"></div>
         <div class="pw-dot" style="background:#FB923C"></div>
@@ -544,145 +580,119 @@
         <div class="pw-urlbar">127.0.0.1:5178</div>
       </div>
 
-      <!-- App header -->
-      <div class="pw-header">
-        <div class="pw-brand">
-          <div class="pw-brand-icon">M</div>
-          <span class="pw-brand-name">CraftConsole</span>
-        </div>
-        <div class="pw-chip">
-          <div class="pw-chip-dot"></div>
-          <span class="pw-chip-label">Running</span>
-        </div>
-      </div>
-
-      <!-- Dashboard page -->
-      <div class="pw-page">
-
-        <!-- Page heading -->
-        <div style="margin-bottom:4px">
-          <div style="font-size:16px;font-weight:800;color:var(--text-primary);line-height:1.2">Dashboard</div>
-          <div style="font-size:10px;color:var(--text-muted);margin-top:2px">Minecraft 1.21.4</div>
-        </div>
-
-        <!-- Machine section -->
-        <div class="pw-section">
-          <div class="pw-section-bar"></div>
-          <span class="pw-section-label">MACHINE</span>
-        </div>
-        <div class="pw-cards2">
-          <div class="pw-card">
-            <div class="pw-metric-label">CPU USAGE</div>
-            <div class="pw-metric-row">
-              <span class="pw-metric-val">23.4</span>
-              <span class="pw-metric-unit">%</span>
-            </div>
-            <div class="pw-bar-track">
-              <div class="pw-bar-fill" style="width:23%;background:linear-gradient(90deg,#60A5FA,#22D3EE)"></div>
+      <div class="pw-body">
+        <!-- Sidebar -->
+        <div class="pw-sidebar">
+          <div class="pw-brand-row">
+            <div class="brand-mark"></div>
+            <div class="pw-brand-text">
+              <span class="pw-brand-name">CraftConsole</span>
+              <span class="pw-brand-sub">Server panel</span>
             </div>
           </div>
-          <div class="pw-card">
-            <div class="pw-metric-label">RAM USAGE</div>
-            <div class="pw-metric-row">
-              <span class="pw-metric-val">6.2</span>
-              <span class="pw-metric-unit">/ 16 GB</span>
-            </div>
-            <div class="pw-bar-track">
-              <div class="pw-bar-fill" style="width:39%;background:linear-gradient(90deg,#FB923C,#FCD34D)"></div>
+          <div class="pw-sidenav">
+            <div class="pw-navitem active"><span class="pw-navitem-icon">⊞</span> Dashboard</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">▶_</span> Console</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">◎</span> Players</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">⚠</span> Issues <span class="pw-navitem-badge">2</span></div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">⬡</span> Server</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">▥</span> Plugins</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">≡</span> Editor</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">⎘</span> Backups</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">◷</span> Scheduler</div>
+            <div class="pw-navitem"><span class="pw-navitem-icon">⚙</span> Settings</div>
+          </div>
+          <div class="pw-sidefoot"><span class="pw-conn-dot"></span> Live</div>
+        </div>
+
+        <!-- Main -->
+        <div class="pw-main">
+          <div class="pw-topbar">
+            <span class="pw-page-title">Dashboard</span>
+            <div class="pw-topbar-cluster">
+              <span class="pw-chip">Survival</span>
+              <span class="pw-pill">Running</span>
+              <span class="pw-chip">3 online</span>
+              <span class="pw-mini-btn">▶</span>
+              <span class="pw-mini-btn">↻</span>
+              <span class="pw-mini-btn">■</span>
             </div>
           </div>
-        </div>
 
-        <!-- Server section -->
-        <div class="pw-section">
-          <div class="pw-section-bar"></div>
-          <span class="pw-section-label">SERVER</span>
-        </div>
-        <div class="pw-cards3">
-
-          <!-- Players arc gauge — 3/20 = 15% -->
-          <div class="pw-card-glass">
-            <div class="pw-metric-label">PLAYERS ONLINE</div>
-            <div class="pw-arc">
-              <svg viewBox="0 0 100 100">
-                <defs>
-                  <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stop-color="#22D3EE"/>
-                    <stop offset="1" stop-color="#67E8F9"/>
-                  </linearGradient>
-                </defs>
-                <!-- track: 135° → 405° (=45°), r=38, cx=cy=50 -->
-                <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9"
-                      fill="none" stroke="#162035" stroke-width="8" stroke-linecap="round"/>
-                <!-- fill: 15% → sweep=40.5° → end=175.5° -->
-                <path d="M 23.1 76.9 A 38 38 0 0 1 12.2 53.0"
-                      fill="none" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
-              </svg>
-              <div class="pw-arc-center">
-                <div class="pw-arc-val" style="color:var(--accent)">3</div>
-                <div class="pw-arc-unit">online</div>
+          <div class="pw-page">
+            <div class="pw-dash-hero">
+              <div class="pw-tile">
+                <div class="pw-tile-label">Server</div>
+                <div class="pw-tile-val" style="color:var(--accent)">Running</div>
+                <div class="pw-tile-sub">v1.21.4 · up 3h 42m</div>
+              </div>
+              <div class="pw-tile">
+                <div class="pw-tile-label">Players online</div>
+                <div class="pw-tile-val">3<span class="pw-tile-unit">/ 20</span></div>
+                <div class="pw-tile-sub">Steve, Alex, Notch</div>
+              </div>
+              <div class="pw-tile">
+                <div class="pw-tile-label">Server CPU</div>
+                <div class="pw-tile-val">18<span class="pw-tile-unit">%</span></div>
+                <div class="pw-spark">
+                  <i style="height:35%"></i><i style="height:55%"></i><i style="height:40%"></i>
+                  <i style="height:70%"></i><i style="height:50%"></i><i style="height:65%"></i>
+                  <i style="height:45%"></i><i style="height:60%;background:var(--accent)"></i>
+                </div>
+              </div>
+              <div class="pw-tile">
+                <div class="pw-tile-label">Server memory</div>
+                <div class="pw-tile-val">1.4<span class="pw-tile-unit">/ 2.0 GB</span></div>
+                <div class="pw-bar-track"><div class="pw-bar-fill" style="width:70%"></div></div>
               </div>
             </div>
-            <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:5px">max 20</div>
-          </div>
 
-          <!-- Memory arc gauge — 65% -->
-          <div class="pw-card-glass">
-            <div class="pw-metric-label">MEMORY USED</div>
-            <div class="pw-arc">
-              <svg viewBox="0 0 100 100">
-                <defs>
-                  <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stop-color="#FB923C"/>
-                    <stop offset="1" stop-color="#FCD34D"/>
-                  </linearGradient>
-                </defs>
-                <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9"
-                      fill="none" stroke="#162035" stroke-width="8" stroke-linecap="round"/>
-                <!-- fill: 65% → sweep=175.5° → end=310.5° -->
-                <path d="M 23.1 76.9 A 38 38 0 0 1 74.7 21.1"
-                      fill="none" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
-              </svg>
-              <div class="pw-arc-center">
-                <div class="pw-arc-val" style="color:#FB923C">1.4</div>
-                <div class="pw-arc-unit">GB</div>
+            <div class="pw-dash-row">
+              <div class="pw-card-wide">
+                <div class="pw-card-title">This machine</div>
+                <div class="pw-gauge-pair">
+                  <div class="pw-arc">
+                    <svg viewBox="0 0 100 100">
+                      <defs>
+                        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0" stop-color="#34D399"/>
+                          <stop offset="1" stop-color="#6EE7B7"/>
+                        </linearGradient>
+                      </defs>
+                      <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9" fill="none" stroke="#232A38" stroke-width="8" stroke-linecap="round"/>
+                      <path d="M 23.1 76.9 A 38 38 0 0 1 15.4 46.3" fill="none" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
+                    </svg>
+                    <div class="pw-arc-center">
+                      <div class="pw-arc-val">23<span class="pw-arc-unit">%</span></div>
+                      <div class="pw-arc-unit">CPU</div>
+                    </div>
+                  </div>
+                  <div class="pw-arc">
+                    <svg viewBox="0 0 100 100">
+                      <defs>
+                        <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0" stop-color="#FBBF24"/>
+                          <stop offset="1" stop-color="#FCD34D"/>
+                        </linearGradient>
+                      </defs>
+                      <path d="M 23.1 76.9 A 38 38 0 1 1 76.9 76.9" fill="none" stroke="#232A38" stroke-width="8" stroke-linecap="round"/>
+                      <path d="M 23.1 76.9 A 38 38 0 0 1 74.7 21.1" fill="none" stroke="url(#g2)" stroke-width="8" stroke-linecap="round"/>
+                    </svg>
+                    <div class="pw-arc-center">
+                      <div class="pw-arc-val">6.2</div>
+                      <div class="pw-arc-unit">/ 16 GB</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="pw-card-wide">
+                <div class="pw-card-title">Recent issues</div>
+                <div class="pw-issue-row"><span class="pw-badge-warn">Warn</span> Can't keep up! Is the server overloaded?</div>
+                <div class="pw-issue-row"><span class="pw-badge-info">Info</span> Alex lost connection: Disconnected</div>
+                <div class="pw-issue-row"><span class="pw-badge-warn">Warn</span> Tried to remove entity while removing</div>
               </div>
             </div>
-            <div style="font-size:9px;color:var(--text-muted);text-align:center;margin-top:5px">peak 2.1 GB</div>
           </div>
-
-          <!-- Uptime -->
-          <div class="pw-card-glass">
-            <div class="pw-metric-label">UPTIME</div>
-            <div style="font-size:22px;font-weight:800;color:var(--accent);margin-top:8px;line-height:1">3h 42m</div>
-            <div style="font-size:9px;color:var(--text-muted);margin-top:4px">since last start</div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- Bottom nav -->
-      <div class="pw-nav">
-        <div class="pw-tab">
-          <div class="pw-tab-line"></div>
-          <div class="pw-tab-icon" style="color:var(--accent)">⊞</div>
-          <div class="pw-tab-label" style="color:var(--accent)">Dashboard</div>
-        </div>
-        <div class="pw-tab">
-          <div class="pw-tab-icon" style="color:var(--text-muted)">▶_</div>
-          <div class="pw-tab-label" style="color:var(--text-muted)">Console</div>
-        </div>
-        <div class="pw-tab">
-          <div class="pw-tab-icon" style="color:var(--text-muted)">◎</div>
-          <div class="pw-tab-label" style="color:var(--text-muted)">Players</div>
-        </div>
-        <div class="pw-tab">
-          <div class="pw-tab-icon" style="color:var(--text-muted)">⬡</div>
-          <div class="pw-tab-label" style="color:var(--text-muted)">Server</div>
-        </div>
-        <div class="pw-tab">
-          <div class="pw-tab-icon" style="color:var(--text-muted)">≡</div>
-          <div class="pw-tab-label" style="color:var(--text-muted)">Editor</div>
         </div>
       </div>
 
@@ -697,16 +707,16 @@
     <div class="stat-label">Feature modules</div>
   </div>
   <div class="stat-item">
-    <div class="stat-number">Real-time</div>
-    <div class="stat-label">Server metrics</div>
+    <div class="stat-number">140+</div>
+    <div class="stat-label">Automated tests</div>
   </div>
   <div class="stat-item">
-    <div class="stat-number">.NET 10</div>
-    <div class="stat-label">Cutting-edge runtime</div>
+    <div class="stat-number">2</div>
+    <div class="stat-label">Platforms — Windows &amp; Debian</div>
   </div>
   <div class="stat-item">
-    <div class="stat-number">0</div>
-    <div class="stat-label">Browser required</div>
+    <div class="stat-number">1 file</div>
+    <div class="stat-label">Self-contained executable</div>
   </div>
 </div>
 
@@ -714,127 +724,166 @@
 <section id="features">
   <div class="section-tag">Features</div>
   <h2 class="section-title">Everything you need to run<br/>a Minecraft server</h2>
-  <p class="section-sub">A complete HMI-style control panel for your server — from console output to player management, all in one app.</p>
+  <p class="section-sub">A complete control panel for your server. Click any feature for what it does, how it works, and — where there is one — what it can't do.</p>
 
-  <div class="feature-grid">
+  <div class="feature-grid" id="feature-grid">
+
     <div class="feature-card">
-      <div class="feature-icon">📊</div>
-      <div class="feature-title">Live Dashboard</div>
-      <div class="feature-desc">Real-time machine CPU &amp; RAM, server process metrics, player count, memory usage, and uptime — displayed with arc gauges and gradient progress bars.</div>
+      <button class="feature-card-trigger" type="button" data-feature="dashboard" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">📊</div>
+        <div class="feature-title"><span>Live Dashboard</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Real-time machine and server metrics, player count, and uptime — arc gauges and gradient bars, updated live.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Four hero tiles — server status, version and uptime; players online versus the server's max; server CPU with a history sparkline; and server memory with a fill meter — plus machine-wide CPU and memory arc gauges and a recent-issues feed.</p>
+        <p><strong>How it works.</strong> Everything pushes over Server-Sent Events, so figures update as they change with no polling or refreshing.</p>
+        <p><strong>Limits.</strong> A figure only appears when it's genuinely knowable — if there's no local process (a server reached over RCON, or one not yet started), CPU, RAM and uptime show "Not available" instead of a misleading zero.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">⬛</div>
-      <div class="feature-title">Server Console</div>
-      <div class="feature-desc">Colour-coded log stream with level filtering (INFO / WARN / ERROR), player avatar chips, and a command input bar.</div>
+      <button class="feature-card-trigger" type="button" data-feature="console" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">⬛</div>
+        <div class="feature-title"><span>Server Console</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Streamed output with level filtering, search, chat colouring, and a command bar with autocomplete and history.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Live console output with level chips (All / Info / Warn / Error / Debug), a text filter, auto-scroll with a "new output" jump button, coloured chat names, and a command input with <code>/</code>-triggered autocomplete over the vanilla command set plus ↑↓ history.</p>
+        <p><strong>How it works.</strong> Output streams over the same live channel as the dashboard; command history is kept in the browser, so it survives a refresh.</p>
+        <p><strong>Limits.</strong> Over an RCON connection this becomes a transcript of commands and their replies, not a live log — RCON has no access to the server's raw output.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">👥</div>
-      <div class="feature-title">Player Management</div>
-      <div class="feature-desc">See online players, view stats, kick or ban with a reason dialog, manage the whitelist and ban list in real time.</div>
+      <button class="feature-card-trigger" type="button" data-feature="players" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">👥</div>
+        <div class="feature-title"><span>Players &amp; Moderation</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Online roster with location, kick/ban/ban-IP, ban lists, and a whitelist you can toggle live.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> An online player list with avatar, IP, best-effort geolocation and time joined; kick, ban and ban-IP with an optional reason; banned-player and banned-IP lists with pardon; and a whitelist tab with an enforcement toggle plus add/remove/reload.</p>
+        <p><strong>How it works.</strong> Moderation sends the equivalent server command (kick/ban/whitelist); ban and whitelist entries are read from the server's own files.</p>
+        <p><strong>Limits.</strong> Ban-IP is disabled when a connection can't report a player's IP, rather than guessing. Geolocation calls a third-party service (ipinfo.io) and is best-effort.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">⚙️</div>
-      <div class="feature-title">Server Control</div>
-      <div class="feature-desc">Start, stop, and restart the server. Select JAR file, configure JVM arguments, and manage your server profile settings.</div>
+      <button class="feature-card-trigger" type="button" data-feature="server" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">⚙️</div>
+        <div class="feature-title"><span>Server Control &amp; Profiles</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Create a profile for a server you launch or one you attach to, download a JAR and a JVM, then start, stop or restart.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Profiles in two modes — Managed, where the panel launches and owns the process, or Remote, attached over RCON — plus start/stop/restart, a guided server-JAR download (Vanilla, Paper and Purpur auto-download with a version picker, progress and cancel), and Java runtime detection with one-click downloads.</p>
+        <p><strong>How it works.</strong> A Managed profile launches the JAR as a child process and reads its output directly; a Remote profile authenticates over RCON instead.</p>
+        <p><strong>Limits.</strong> One active server at a time.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">🔌</div>
-      <div class="feature-title">Attach via RCON</div>
-      <div class="feature-desc">Don't own the process? Point a profile at any running server's RCON port instead of launching a new one. Commands, the player list, moderation and the whitelist all work the same way — the panel is upfront about the few things a remote connection can't do.</div>
+      <button class="feature-card-trigger" type="button" data-feature="rcon" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🔌</div>
+        <div class="feature-title"><span>Attach via RCON</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Don't own the process? Point a profile at any running server's RCON port instead of launching a new one.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Commands, the online player list, and moderation (kick/ban/whitelist) all work exactly as they do for a managed server.</p>
+        <p><strong>How it works.</strong> A Remote profile authenticates over the Source RCON protocol and sends commands over that connection; the password is encrypted at rest, so the panel reconnects after a restart without asking again.</p>
+        <p><strong>Limits.</strong> No log stream, no filesystem, and no process to restart — the config editor, plugin list and Restart are disabled with an explanation rather than failing silently. Player join/leave is polled (roughly every 5s); a "server ready" trigger needs a real log line RCON doesn't have. RCON itself has no encryption of its own — only point it at a server on a trusted network.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">📁</div>
-      <div class="feature-title">Config Editor</div>
-      <div class="feature-desc">Browse and edit any file in your server directory with a built-in text editor. No need to leave the app to tweak server.properties.</div>
+      <button class="feature-card-trigger" type="button" data-feature="editor" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">📁</div>
+        <div class="feature-title"><span>Config Editor</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Browse and edit server.properties and friends without leaving the browser.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> A file tree of the server directory, tabbed editing with dirty-state tracking, and Ctrl+S to save.</p>
+        <p><strong>How it works.</strong> Reads and writes are jailed to the server's own directory — nothing can escape it — and limited to known-safe text formats.</p>
+        <p><strong>Limits.</strong> <code>.yml</code> / <code>.yaml</code> / <code>.json</code> / <code>.txt</code> / <code>.properties</code> / <code>.log</code> only, capped at 2 MB per file, and needs a locally-launched server — not available over RCON.</p>
+      </div>
     </div>
+
     <div class="feature-card">
-      <div class="feature-icon">🔍</div>
-      <div class="feature-title">Issue Tracker</div>
-      <div class="feature-desc">Automatically surfaces WARN and ERROR log entries into a dedicated issue panel, making it easy to spot and diagnose problems.</div>
+      <button class="feature-card-trigger" type="button" data-feature="plugins" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🧩</div>
+        <div class="feature-title"><span>Plugins</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">See every plugin's name, version and author, and disable one without deleting it.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Scans the plugins folder and reads metadata straight out of each jar's <code>plugin.yml</code>; disabling moves the jar to <code>plugins/disabled</code> instead of deleting it.</p>
+        <p><strong>How it works.</strong> A disable takes effect after the next restart — the same as if you'd moved the file yourself.</p>
+        <p><strong>Limits.</strong> Needs local file access — not available over RCON.</p>
+      </div>
     </div>
+
+    <div class="feature-card">
+      <button class="feature-card-trigger" type="button" data-feature="backups" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🗄️</div>
+        <div class="feature-title"><span>Backups &amp; Restore</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Zip any set of folders to a destination on demand, and restore an archive back when you need it.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Backup job definitions — a name, one or more source paths, a destination and a compression level — run-on-demand with live progress, an archive list per job, and restore into a chosen directory.</p>
+        <p><strong>How it works.</strong> Restoring extracts the archive over the target directory, overwriting only files with matching names; every entry is checked to stay within the target before it's written.</p>
+        <p><strong>Limits.</strong> Restoring requires the server to be stopped first — writing over a live world would just be overwritten by the next autosave.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <button class="feature-card-trigger" type="button" data-feature="scheduler" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🕐</div>
+        <div class="feature-title"><span>Scheduler</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Run a command, broadcast a message, or restart — on an interval, at a time, or on a game event.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Triggers on an interval in seconds, a daily time, a player joining, or the server becoming ready; actions to run a console command, broadcast a message, or restart the server. Tasks can be enabled, disabled, or run on demand.</p>
+        <p><strong>How it works.</strong> Triggers and actions run against whatever server is currently active, managed or RCON alike.</p>
+        <p><strong>Limits.</strong> A trigger or action that can't fire on the current connection — Restart or "server ready" over RCON — shows as disabled with why, rather than sitting there silently never running.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <button class="feature-card-trigger" type="button" data-feature="issues" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🔍</div>
+        <div class="feature-title"><span>Issue Tracker</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Every WARN and ERROR line, automatically pulled out of the console into one place.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> Distills warnings and errors out of the console stream into a filterable feed (All / Warning / Severe), with a live count badge in the sidebar and a one-click clear.</p>
+        <p><strong>How it works.</strong> Every console line is classified as it streams in, so nothing needs to be searched for after the fact.</p>
+        <p><strong>Limits.</strong> Only sees what the console sees — not populated for a connection with no log stream.</p>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <button class="feature-card-trigger" type="button" data-feature="security" aria-expanded="false" aria-controls="feature-panel">
+        <div class="feature-icon" aria-hidden="true">🔒</div>
+        <div class="feature-title"><span>Password-Protected</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">One password gates the whole panel, hashed and rate-limited — plus display and colour preferences.</div>
+      </button>
+      <div class="feature-detail-source">
+        <p><strong>What it does.</strong> A single operator password (PBKDF2-SHA256, 210,000 iterations) required for every request once set; server-held sessions; a lockout per IP after 5 failed attempts. Settings also covers console display (timestamps, auto-scroll, buffer size) and per-level colour customisation.</p>
+        <p><strong>How it works.</strong> First run is loopback-only, so setup can't be hijacked over the network even if the panel is bound wider afterwards.</p>
+        <p><strong>Limits.</strong> There's no TLS — use an SSH tunnel or a trusted network to reach the panel from elsewhere.</p>
+      </div>
+    </div>
+
   </div>
-</section>
 
-<div class="gradient-divider"></div>
-
-<!-- ── Modules ── -->
-<section id="modules">
-  <div class="section-tag">Modules</div>
-  <h2 class="section-title">Modular architecture</h2>
-  <p class="section-sub">Each feature is a self-contained module — clean, independent, and easy to extend.</p>
-
-  <div class="module-grid">
-    <div class="module-item">
-      <div class="module-dot"></div>
-      <div>
-        <div class="module-name">Dashboard</div>
-        <div class="module-desc">Metrics &amp; server health</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#60A5FA"></div>
-      <div>
-        <div class="module-name">Console</div>
-        <div class="module-desc">Live log stream &amp; commands</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#67E8F9"></div>
-      <div>
-        <div class="module-name">Players</div>
-        <div class="module-desc">Player list &amp; moderation</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#FB923C"></div>
-      <div>
-        <div class="module-name">Server</div>
-        <div class="module-desc">Start / stop / configure</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#FCD34D"></div>
-      <div>
-        <div class="module-name">Editor</div>
-        <div class="module-desc">File browser &amp; editor</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#4ADE80"></div>
-      <div>
-        <div class="module-name">Backup</div>
-        <div class="module-desc">World backup management</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#F87171"></div>
-      <div>
-        <div class="module-name">Issues</div>
-        <div class="module-desc">Surfaced errors &amp; warnings</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#C084FC"></div>
-      <div>
-        <div class="module-name">Plugins</div>
-        <div class="module-desc">Plugin browser &amp; manager</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#94A3B8"></div>
-      <div>
-        <div class="module-name">Scheduler</div>
-        <div class="module-desc">Timed commands &amp; tasks</div>
-      </div>
-    </div>
-    <div class="module-item">
-      <div class="module-dot" style="background:#475569"></div>
-      <div>
-        <div class="module-name">Settings</div>
-        <div class="module-desc">App &amp; profile configuration</div>
-      </div>
-    </div>
-  </div>
+  <noscript>
+    <style>
+      .feature-detail-source {
+        display: block !important;
+        margin-top: 16px; padding-top: 16px;
+        border-top: 1px solid var(--border);
+      }
+      .feature-card-trigger { cursor: default; }
+      .feature-chevron { display: none; }
+    </style>
+  </noscript>
 </section>
 
 <div class="gradient-divider"></div>
@@ -852,9 +901,12 @@
     <div class="tech-badge">Server-Sent Events</div>
     <div class="tech-badge">Vanilla JS &amp; CSS</div>
     <div class="tech-badge">System.Reactive</div>
+    <div class="tech-badge">Data Protection</div>
+    <div class="tech-badge">Source RCON</div>
     <div class="tech-badge">Custom Design System</div>
     <div class="tech-badge">Windows</div>
     <div class="tech-badge">Debian &amp; Ubuntu</div>
+    <div class="tech-badge">systemd</div>
   </div>
 </section>
 
@@ -878,7 +930,7 @@
 <!-- ── Footer ── -->
 <footer>
   <div class="footer-brand">
-    <div class="nav-icon">M</div>
+    <div class="brand-mark"></div>
     <span class="footer-copy">CraftConsole</span>
   </div>
   <span class="footer-copy">Built with ASP.NET Core &amp; .NET 10</span>
@@ -888,6 +940,80 @@
     <a href="https://github.com/HexEditHD/CraftConsole/releases">Releases</a>
   </div>
 </footer>
+
+<script>
+(function () {
+  'use strict';
+  var grid = document.getElementById('feature-grid');
+  if (!grid) return;
+
+  var triggers = Array.prototype.slice.call(grid.querySelectorAll('.feature-card-trigger'));
+  var panel = null;
+  var openId = null;
+  var resizeTimer = null;
+
+  triggers.forEach(function (trigger) {
+    trigger.id = 'feature-trigger-' + trigger.getAttribute('data-feature');
+  });
+
+  function closePanel() {
+    if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    panel = null;
+    openId = null;
+    triggers.forEach(function (t) {
+      t.setAttribute('aria-expanded', 'false');
+      t.closest('.feature-card').classList.remove('is-open');
+    });
+  }
+
+  function rowCardsFor(card) {
+    var top = card.offsetTop;
+    return triggers
+      .map(function (t) { return t.closest('.feature-card'); })
+      .filter(function (c) { return Math.abs(c.offsetTop - top) < 2; });
+  }
+
+  function openFor(trigger) {
+    var id = trigger.getAttribute('data-feature');
+    var reopening = openId !== id;
+    var card = trigger.closest('.feature-card');
+    closePanel();
+    if (!reopening) return;
+
+    var source = card.querySelector('.feature-detail-source');
+    var titleEl = card.querySelector('.feature-title span');
+    var title = titleEl ? titleEl.textContent : '';
+
+    panel = document.createElement('div');
+    panel.className = 'feature-panel';
+    panel.id = 'feature-panel';
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-labelledby', trigger.id);
+    panel.innerHTML =
+      '<button type="button" class="feature-panel-close" aria-label="Close">✕</button>' +
+      '<h3>' + title + '</h3>' + source.innerHTML;
+
+    var rowCards = rowCardsFor(card);
+    var lastInRow = rowCards[rowCards.length - 1];
+    lastInRow.insertAdjacentElement('afterend', panel);
+
+    trigger.setAttribute('aria-expanded', 'true');
+    card.classList.add('is-open');
+    openId = id;
+
+    panel.querySelector('.feature-panel-close').addEventListener('click', closePanel);
+  }
+
+  triggers.forEach(function (trigger) {
+    trigger.addEventListener('click', function () { openFor(trigger); });
+  });
+
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(closePanel, 150);
+  });
+})();
+</script>
 
 </body>
 </html>
