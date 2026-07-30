@@ -5,25 +5,34 @@ using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using Serilog;
+using Serilog.Extensions.Logging;
 
 // The configuration binder reads "--key value" as a pair, so a valueless flag
 // swallows whatever follows it: "--no-browser --urls http://…" bound the default
 // address because --urls became the *value* of --no-browser. Flags CraftConsole
 // interprets itself are removed before the host ever sees them.
-string[] ownFlags = ["--no-browser"];
+string[] ownFlags = ["--no-browser", "--http"];
 var hostArgs = args.Where(a => !ownFlags.Contains(a, StringComparer.OrdinalIgnoreCase)).ToArray();
 
 var builder = WebApplication.CreateBuilder(hostArgs);
 
+// HTTPS by default — a self-signed certificate is generated on first run (see
+// TlsCertificateProvider below), same posture as most self-hosted admin panels. --http /
+// CRAFTCONSOLE_HTTPS=0 opts back out to plain HTTP, e.g. for anyone already behind a
+// TLS-terminating reverse proxy.
+var httpsEnabled = !args.Contains("--http", StringComparer.OrdinalIgnoreCase)
+    && Environment.GetEnvironmentVariable("CRAFTCONSOLE_HTTPS") != "0";
+
 // Localhost only unless the user explicitly overrides via --urls / ASPNETCORE_URLS.
 // A password is required for every request once one is set up (see AuthService /
 // the auth gate below), so widening the bind is reasonable after setup — but do
-// it over a trusted network or a tunnel; there's still no TLS here.
+// it over a trusted network or a tunnel.
 if (builder.Configuration["urls"] is null
     && Environment.GetEnvironmentVariable("ASPNETCORE_URLS") is null)
 {
-    builder.WebHost.UseUrls("http://127.0.0.1:5178");
+    builder.WebHost.UseUrls($"{(httpsEnabled ? "https" : "http")}://127.0.0.1:5178");
 }
 
 // --data-dir → CRAFTCONSOLE_DATA → per-user OS default. Created eagerly so a
@@ -38,7 +47,8 @@ var serilog = AppLogger.Create(appDataPath, builder.Environment.IsDevelopment())
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(serilog, dispose: true);
 
-builder.Services.AddSingleton(new SettingsHolder(appDataPath));
+var settingsHolder = new SettingsHolder(appDataPath);
+builder.Services.AddSingleton(settingsHolder);
 builder.Services.AddSingleton<AuthService>();
 builder.Services.AddSingleton(new HttpClient());
 builder.Services.AddSingleton<DownloadService>();
@@ -52,6 +62,23 @@ builder.Services.AddDataProtection()
     .SetApplicationName("CraftConsole")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(appDataPath, "dpkeys")));
 builder.Services.AddSingleton<RconSecretStore>();
+
+// TLS certificate resolution has to happen before Build() so Kestrel's HTTPS defaults can be
+// wired up — but the DI-registered IDataProtectionProvider above only exists after Build().
+// A standalone provider pointed at the same key ring sidesteps that; it's the same mechanism
+// that already lets the Debian service decrypt RCON secrets across restarts (see above).
+if (httpsEnabled)
+{
+    var standaloneDataProtection = DataProtectionProvider.Create(
+        new DirectoryInfo(Path.Combine(appDataPath, "dpkeys")));
+    var tlsLogger = new SerilogLoggerFactory(serilog).CreateLogger<TlsCertificateProvider>();
+    var tlsCertificateProvider = new TlsCertificateProvider(settingsHolder, standaloneDataProtection, tlsLogger, args);
+    await tlsCertificateProvider.InitializeAsync();
+
+    builder.Services.AddSingleton(tlsCertificateProvider);
+    builder.WebHost.ConfigureKestrel(o => o.ConfigureHttpsDefaults(
+        h => h.ServerCertificateSelector = (_, _) => tlsCertificateProvider.Current));
+}
 
 builder.Services.AddSingleton<EventBroker>();
 builder.Services.AddSingleton<ServerSupervisor>();
@@ -148,6 +175,9 @@ app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
 
+if (httpsEnabled)
+    app.MapTlsApi();
+
 if (app.Environment.IsDevelopment())
     app.MapDevApi();
 
@@ -167,7 +197,7 @@ if (!headless && !app.Environment.IsDevelopment())
 {
     app.Lifetime.ApplicationStarted.Register(() =>
     {
-        var url = app.Urls.FirstOrDefault() ?? "http://127.0.0.1:5178";
+        var url = app.Urls.FirstOrDefault() ?? $"{(httpsEnabled ? "https" : "http")}://127.0.0.1:5178";
         try
         {
             Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });

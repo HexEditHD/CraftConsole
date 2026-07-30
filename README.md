@@ -44,7 +44,9 @@ Download `CraftConsole-<version>-win-x64.exe` from the
 [latest release](https://github.com/HexEditHD/CraftConsole/releases) and run it.
 
 It is a single self-contained file — no .NET runtime, no installer, nothing beside it.
-Your browser opens at `http://127.0.0.1:5178`.
+Your browser opens at `https://127.0.0.1:5178` — the panel generates itself a self-signed
+certificate on first run, so the browser will show a one-time warning; that's expected (see
+[TLS](#tls) below).
 
 ### Debian / Ubuntu
 
@@ -55,8 +57,9 @@ sudo apt install ./craftconsole_<version>_amd64.deb
 ```
 
 That installs a systemd service running as a dedicated `craftconsole` user, listening on
-`http://127.0.0.1:5178`, with its data in `/var/lib/craftconsole`. The .NET runtime is
-bundled, so Microsoft's apt repository is not required.
+`https://127.0.0.1:5178` (self-signed by default — see [TLS](#tls) below), with its data in
+`/var/lib/craftconsole`. The .NET runtime is bundled, so Microsoft's apt repository is not
+required.
 
 ```bash
 sudo systemctl status craftconsole
@@ -103,30 +106,55 @@ that don't apply (Restart, the config editor, IP bans) are disabled with a reaso
 just failing when clicked. The online player list, moderation, and the whitelist still work —
 those are just commands.
 
-> RCON has no encryption of its own; the password crosses the network in the clear the same
-> way the panel's own traffic does (see the TLS note below). Only point it at a server on a
-> network you trust.
+> RCON has no encryption of its own — the password and everything sent over it crosses the
+> network in the clear regardless of the panel's own TLS setting (see [TLS](#tls) below, which
+> only covers the browser↔panel hop). Only point it at a server on a network you trust.
 
 ---
 
+## TLS
+
+The panel serves HTTPS by default — on first run it generates itself a self-signed certificate
+(RSA 2048, valid for `localhost`, `127.0.0.1`, `::1` and the machine's hostname). Browsers warn
+once about the untrusted issuer; that's expected for a self-signed cert and safe to accept for a
+panel you host yourself, the same way router admin pages and tools like Proxmox or TrueNAS work.
+
+To use your own certificate instead — from Let's Encrypt, an internal CA, wherever — open
+**Settings → TLS certificate** and upload the certificate and private key as PEM files (the
+certificate file can be a full chain: leaf followed by intermediates). It takes effect
+immediately, no restart.
+
+For headless/scripted deployments, pin a certificate via configuration instead, which also makes
+the Settings upload read-only (so it can't be silently overridden by a restart):
+
+```bash
+--cert-path /path/to/cert.pfx --cert-password <password>      # or CRAFTCONSOLE_CERT_PATH / CRAFTCONSOLE_CERT_PASSWORD
+```
+
+To go back to plain HTTP — e.g. behind a reverse proxy that already terminates TLS — pass
+`--http` or set `CRAFTCONSOLE_HTTPS=0`.
+
 ## Reaching it from another machine
 
-The panel binds to loopback. On a headless server, forward the port over SSH:
+The panel binds to loopback. On a headless server, the simplest option is still to forward the
+port over SSH rather than exposing it at all:
 
 ```bash
 ssh -L 5178:127.0.0.1:5178 you@your-server
 ```
 
-Then browse to `http://localhost:5178` on your own machine.
+Then browse to `https://localhost:5178` on your own machine.
 
-You *can* bind it wider — a password is required for every request, so it is not unguarded:
+You *can* bind it wider instead — a password is required for every request, and TLS is on by
+default, so it is not unguarded:
 
 ```bash
-sudo systemctl edit craftconsole    # Environment=ASPNETCORE_URLS=http://0.0.0.0:5178
+sudo systemctl edit craftconsole    # Environment=ASPNETCORE_URLS=https://0.0.0.0:5178
 ```
 
-> **There is no TLS.** The password and everything you do crosses the network in the clear.
-> Only do this on a network you trust, or put a reverse proxy with HTTPS in front of it.
+A self-signed certificate will still trigger a browser warning at the new address too, since its
+SAN list is fixed to loopback and the local hostname — upload a certificate that actually covers
+the address you're using (see [TLS](#tls) above) if you don't want that.
 
 ---
 
@@ -151,7 +179,10 @@ Logs roll daily under `logs/`, keeping a week.
 | Flag | Effect |
 |---|---|
 | `--data-dir <path>` | Where to keep data (see above) |
-| `--urls <url>` | Address to bind, e.g. `http://0.0.0.0:5178` |
+| `--urls <url>` | Address to bind, e.g. `https://0.0.0.0:5178` |
+| `--http` | Serve plain HTTP instead of the default self-signed HTTPS |
+| `--cert-path <path>` | Pin a PFX certificate instead of the auto-generated one |
+| `--cert-password <password>` | Password for `--cert-path`, if the PFX has one |
 | `--no-browser` | Do not open a browser at startup |
 
 ---
@@ -232,8 +263,8 @@ clean runner, and publishes with `SHA256SUMS`.
 
 ## Known limitations
 
-- **No TLS.** See above.
-- **RCON connections are unencrypted**, same as the panel's own traffic — see above.
+- **TLS is self-signed by default.** Real trust needs your own certificate — see [TLS](#tls).
+- **RCON connections are unencrypted**, regardless of the panel's own TLS setting — see above.
 - **One server at a time.** CraftConsole manages or attaches to a single server; running
   several profiles simultaneously needs several instances of the panel.
 - Machine CPU and memory gauges work on Windows and Linux. Other platforms show them as

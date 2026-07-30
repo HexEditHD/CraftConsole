@@ -17,12 +17,15 @@ User=craftconsole
 Group=craftconsole
 WorkingDirectory=/var/lib/craftconsole
 
-# The panel binds to loopback by default. Every request needs the password set
-# on first run, so widening this is a deliberate choice — do it over a tunnel or
-# a trusted network, because there is still no TLS. To change it, run
+# The panel binds to loopback by default and serves itself a self-signed TLS certificate
+# (see TlsCertificateProvider) — every request also needs the password set on first run.
+# Widening the bind is still a deliberate choice; prefer a tunnel or a trusted network. To
+# change it, run
 #   sudo systemctl edit craftconsole
-# and set Environment=ASPNETCORE_URLS=http://0.0.0.0:5178
-Environment=ASPNETCORE_URLS=http://127.0.0.1:5178
+# and set Environment=ASPNETCORE_URLS=https://0.0.0.0:5178
+# Add Environment=CRAFTCONSOLE_HTTPS=0 there too if you'd rather serve plain HTTP (e.g. behind
+# a reverse proxy that already terminates TLS).
+Environment=ASPNETCORE_URLS=https://127.0.0.1:5178
 Environment=CRAFTCONSOLE_DATA=/var/lib/craftconsole
 Environment=DOTNET_EnableDiagnostics=0
 
