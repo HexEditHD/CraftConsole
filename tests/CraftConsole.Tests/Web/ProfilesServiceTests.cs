@@ -1,5 +1,6 @@
 using CraftConsole.Core.Models;
 using CraftConsole.Web.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CraftConsole.Tests.Web;
@@ -29,7 +30,8 @@ public class ProfilesServiceTests : IDisposable
     private RconSecretStore NewSecrets() => new(
         new SettingsHolder(_dir),
         Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
-            new DirectoryInfo(Path.Combine(_dir, "dpkeys"))));
+            new DirectoryInfo(Path.Combine(_dir, "dpkeys"))),
+        NullLogger<RconSecretStore>.Instance);
 
     public void Dispose()
     {

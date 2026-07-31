@@ -1,5 +1,6 @@
 using CraftConsole.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CraftConsole.Tests.Web;
@@ -27,7 +28,8 @@ public class RconSecretStoreTests : IDisposable
     /// ring that has changed out from under a stored secret.</summary>
     private RconSecretStore NewStore(string keyRingFolder = "dpkeys")
         => new(_settings, DataProtectionProvider.Create(
-            new DirectoryInfo(Path.Combine(_dir, keyRingFolder))));
+            new DirectoryInfo(Path.Combine(_dir, keyRingFolder))),
+            NullLogger<RconSecretStore>.Instance);
 
     [Fact]
     public async Task An_unset_profile_has_no_password()

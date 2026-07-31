@@ -197,17 +197,17 @@ jobs:
             sudo apt install ./craftconsole_${{ needs.version.outputs.deb_version }}_amd64.deb
             ```
 
-            It installs a systemd service listening on `http://127.0.0.1:5178`, running as a
+            It installs a systemd service listening on `https://127.0.0.1:5178`, running as a
             dedicated `craftconsole` user with data in `/var/lib/craftconsole`. The .NET
             runtime is bundled.
 
-            On first visit you are asked to set a password. The panel binds to loopback;
+            On first visit you are asked to set a password. The panel serves itself a
+            self-signed TLS certificate by default (expect a one-time browser warning — upload
+            your own certificate in Settings if you want a trusted one). It binds to loopback;
             to reach it from another machine, forward the port over SSH:
 
             ```
             ssh -L 5178:127.0.0.1:5178 you@your-server
             ```
-
-            There is no TLS, so do not expose it directly to an untrusted network.
 
             Verify downloads against `SHA256SUMS`.

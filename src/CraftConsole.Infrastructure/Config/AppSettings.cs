@@ -5,7 +5,6 @@ namespace CraftConsole.Infrastructure.Config;
 public class AppSettings
 {
     public string Theme { get; set; } = "Dark";
-    public string DefaultJavaPath { get; set; } = "java";
     public string? ActiveProfileId { get; set; }
     public bool MinimizeToTray { get; set; } = true;
     public bool AutoScrollConsole { get; set; } = true;

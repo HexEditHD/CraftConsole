@@ -77,9 +77,9 @@ public static class SetupApi
         });
 
         // ── Java ──────────────────────────────────────────────────────────
-        app.MapGet("/api/setup/java/detect", async () =>
+        app.MapGet("/api/setup/java/detect", async (CancellationToken ct) =>
         {
-            var found = await JavaInstallationDetector.DetectAsync();
+            var found = await JavaInstallationDetector.DetectAsync(ct);
             return Results.Json(found
                 .OrderByDescending(j => j.MajorVersion)
                 .Select(j => new { j.ExecutablePath, j.DisplayVersion, j.MajorVersion, j.Label }),
@@ -87,7 +87,12 @@ public static class SetupApi
         });
 
         app.MapGet("/api/setup/java/versions", async (SetupService setup, CancellationToken ct) =>
-            Results.Json(await setup.FetchJavaVersionsAsync(ct), Json.Options));
+        {
+            // Lets the frontend show a Debian/Ubuntu install-command hint alongside the
+            // download — this is the endpoint it already calls to populate that same picker.
+            var platform = OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsLinux() ? "linux" : "other";
+            return Results.Json(new { Platform = platform, Versions = await setup.FetchJavaVersionsAsync(ct) }, Json.Options);
+        });
 
         app.MapPost("/api/setup/java/download", (JavaDownloadRequest req, SetupService setup) =>
             setup.StartJavaDownload(req.Major)

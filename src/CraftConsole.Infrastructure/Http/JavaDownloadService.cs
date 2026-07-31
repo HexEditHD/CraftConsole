@@ -11,8 +11,13 @@ public class JavaDownloadService
     private readonly HttpClient _http;
     private readonly DownloadService _downloader;
 
+    // Used only if the live call to Adoptium below throws (offline, API down) — the normal path
+    // always reflects whatever Adoptium currently lists as LTS, so this is a degraded-mode
+    // fallback, not the source of truth. Kept roughly current so even that fallback isn't
+    // immediately stale.
     private static readonly List<JavaVersionInfo> Fallback =
     [
+        new(25, "Java 25 LTS", true),
         new(21, "Java 21 LTS", true),
         new(17, "Java 17 LTS", true),
         new(11, "Java 11 LTS", true),

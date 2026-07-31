@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using CraftConsole.Infrastructure.Config;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
 
 namespace CraftConsole.Web.Services;
 
@@ -20,13 +21,15 @@ public sealed class RconSecretStore
 {
     private readonly JsonFileStore<Dictionary<string, string>> _store;
     private readonly IDataProtector _protector;
+    private readonly ILogger<RconSecretStore> _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private Dictionary<string, string>? _secrets;
 
-    public RconSecretStore(SettingsHolder settings, IDataProtectionProvider dataProtection)
+    public RconSecretStore(SettingsHolder settings, IDataProtectionProvider dataProtection, ILogger<RconSecretStore> log)
     {
         _store = new JsonFileStore<Dictionary<string, string>>(settings.AppDataPath, "rcon-secrets.json");
         _protector = dataProtection.CreateProtector("CraftConsole.RconSecretStore.v1");
+        _log = log;
     }
 
     public async Task SetAsync(Guid profileId, string password)
@@ -70,7 +73,13 @@ public sealed class RconSecretStore
                 return null;
 
             try { return _protector.Unprotect(protectedValue); }
-            catch (CryptographicException) { return null; }
+            catch (CryptographicException ex)
+            {
+                _log.LogWarning(ex,
+                    "Could not decrypt the RCON password stored for profile {ProfileId} (the Data Protection key ring likely changed).",
+                    profileId);
+                return null;
+            }
         }
         finally { _gate.Release(); }
     }
