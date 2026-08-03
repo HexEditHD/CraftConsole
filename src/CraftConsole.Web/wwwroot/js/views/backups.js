@@ -38,18 +38,27 @@ export default {
       }
       for (const job of jobs) {
         const isRunning = running.has(job.id);
-        list.append(h('div', { class: 'card profile-card' },
+        const enabled = job.isEnabled ?? true;
+        list.append(h('div', { class: 'card profile-card', style: enabled ? null : { opacity: .55 } },
+          h('label', { class: 'switch', title: enabled ? 'Enabled' : 'Disabled' },
+            h('input', {
+              type: 'checkbox', checked: enabled,
+              onchange: e => toggle(job, e.target.checked),
+            }),
+            h('span', { class: 'track' })),
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               job.name,
-              h('span', { class: 'badge' }, job.compression)),
+              h('span', { class: 'badge' }, job.compression),
+              enabled ? null : h('span', { class: 'badge warn' }, 'Disabled')),
             h('div', { class: 'meta' },
               `${job.sourcePaths.length} source${job.sourcePaths.length === 1 ? '' : 's'} → ${job.destinationPath}`),
             h('div', { class: 'meta muted' },
               job.lastRun ? `Last run ${timeAgo(job.lastRun)}` : 'Never run')),
           h('div', { class: 'actions' },
             h('button', {
-              class: 'btn sm primary', disabled: isRunning,
+              class: 'btn sm primary', disabled: isRunning || !enabled,
+              title: enabled ? '' : 'This job is disabled — enable it first.',
               onclick: () => run(job),
             }, isRunning ? h('span', { class: 'spinner' }) : icon('play'), isRunning ? 'Running…' : 'Run now'),
             h('button', {
@@ -66,6 +75,11 @@ export default {
               },
             }, icon('trash')))));
       }
+    }
+
+    async function toggle(job, enabled) {
+      try { await api.put(`/api/backups/${job.id}`, { ...job, isEnabled: enabled }); }
+      catch (err) { toast(err.message, 'err'); build(); }
     }
 
     async function run(job) {

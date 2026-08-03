@@ -79,7 +79,35 @@ public class BackupServiceTests : IDisposable
         Assert.Empty(await _backups.SnapshotAsync());
     }
 
+    [Fact]
+    public async Task Update_persists_the_enabled_flag()
+    {
+        var job = await _backups.AddAsync(NewJob());
+        Assert.True(job.IsEnabled);
+
+        var updated = NewJob();
+        updated.IsEnabled = false;
+        await _backups.UpdateAsync(job.Id, updated);
+
+        Assert.False((await _backups.SnapshotAsync())[0].IsEnabled);
+    }
+
     // ── Running a backup ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Disabled_jobs_refuse_to_run()
+    {
+        SeedSource();
+        var job = NewJob();
+        job.IsEnabled = false;
+        var added = await _backups.AddAsync(job);
+
+        var ex = await Assert.ThrowsAsync<BackupService.BackupDisabledException>(
+            () => _backups.RunAsync(added.Id));
+
+        Assert.Contains("disabled", ex.Message);
+        Assert.Empty(Directory.Exists(DestDir) ? Directory.GetFiles(DestDir, "*.zip") : []);
+    }
 
     [Fact]
     public async Task Running_a_job_writes_an_archive_containing_every_source()

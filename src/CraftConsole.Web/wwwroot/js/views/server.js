@@ -3,6 +3,7 @@ import { h, icon, toast, confirmDialog, modal } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
+import { createServerControls } from '../components/server-controls.js';
 
 export default {
   id: 'server',
@@ -83,7 +84,9 @@ export default {
       javaStatus,
       javaLinuxHint);
 
-    el.append(h('div', { class: 'grid' }, profilesCard, downloadCard, javaCard));
+    el.append(h('div', { class: 'setup-split' },
+      profilesCard,
+      h('div', { class: 'grid' }, downloadCard, javaCard)));
 
     // ── Profiles ─────────────────────────────────────────────────────────
     async function loadProfiles() {
@@ -107,6 +110,7 @@ export default {
       for (const p of profiles) {
         const isActive = activeId === p.id;
         const isRcon = p.mode === 'Rcon';
+        const busy = ['Running', 'Starting', 'Stopping'].includes(state.status?.status);
         profileList.append(h('div', { class: 'card profile-card', style: { padding: '13px 16px', background: 'var(--surface-2)' } },
           h('div', { class: 'info' },
             h('div', { class: 'name' },
@@ -118,12 +122,20 @@ export default {
               ? `${p.rconHost}:${p.rconPort}`
               : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
           h('div', { class: 'actions' },
-            !isActive ? h('button', { class: 'btn sm', onclick: () => activate(p.id) }, 'Set active') : null,
-            h('button', {
-              class: 'btn sm primary', title: isRcon ? 'Connect to this server' : 'Start this server',
-              onclick: () => start(p.id),
-              disabled: ['Running', 'Starting', 'Stopping'].includes(state.status?.status),
-            }, icon('play'), isRcon ? 'Connect' : 'Start'),
+            !isActive ? h('button', {
+              class: 'btn sm', title: 'Make this the active profile without starting it',
+              onclick: () => activate(p.id),
+            }, 'Set active') : null,
+            isActive
+              ? createServerControls().el
+              : h('button', {
+                  class: 'btn sm primary',
+                  title: busy
+                    ? 'Another server is running — stop it before switching.'
+                    : (isRcon ? 'Switch to this profile and connect' : 'Switch to this profile and start it'),
+                  onclick: () => start(p.id),
+                  disabled: busy,
+                }, icon('play'), isRcon ? 'Switch & connect' : 'Switch & start'),
             h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openProfileEditor(p) }, icon('pencil')),
             h('button', {
               class: 'btn sm icon-only danger', title: 'Delete',

@@ -7,6 +7,7 @@ namespace CraftConsole.Web.Api;
 public static class AutomationApi
 {
     public record RestoreRequest(string Archive, string TargetDirectory);
+    public record SetEnabledRequest(bool Enabled);
 
     public static void MapAutomationApi(this IEndpointRouteBuilder app)
     {
@@ -24,7 +25,16 @@ public static class AutomationApi
             await backups.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
 
         app.MapPost("/api/backups/{id:guid}/run", async (Guid id, BackupService backups) =>
-            await backups.RunAsync(id) ? Results.Accepted() : Results.NotFound());
+        {
+            try
+            {
+                return await backups.RunAsync(id) ? Results.Accepted() : Results.NotFound();
+            }
+            catch (BackupService.BackupDisabledException ex)
+            {
+                return Results.BadRequest(new { ex.Message });
+            }
+        });
 
         app.MapGet("/api/backups/{id:guid}/archives", async (Guid id, BackupService backups) =>
             await backups.ListArchivesAsync(id) is { } archives
@@ -62,6 +72,9 @@ public static class AutomationApi
 
         app.MapPut("/api/tasks/{id:guid}", async (Guid id, ScheduledTask task, SchedulerService scheduler) =>
             await scheduler.UpdateAsync(id, task) ? Results.NoContent() : Results.NotFound());
+
+        app.MapPost("/api/tasks/{id:guid}/enabled", async (Guid id, SetEnabledRequest req, SchedulerService scheduler) =>
+            await scheduler.SetEnabledAsync(id, req.Enabled) ? Results.NoContent() : Results.NotFound());
 
         app.MapDelete("/api/tasks/{id:guid}", async (Guid id, SchedulerService scheduler) =>
             await scheduler.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
