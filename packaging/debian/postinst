@@ -50,9 +50,10 @@ case "$1" in
     fi
 
     echo ""
-    echo "CraftConsole is listening on http://127.0.0.1:5178"
+    echo "CraftConsole is listening on https://127.0.0.1:5178 (self-signed by default)"
     echo "Open it from this machine, or forward the port over SSH:"
     echo "  ssh -L 5178:127.0.0.1:5178 $(id -un)@<this-host>"
+    echo "  then browse to https://localhost:5178"
     echo "You will be asked to set a password on first visit."
     echo ""
     ;;
