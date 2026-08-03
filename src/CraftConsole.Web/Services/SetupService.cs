@@ -11,7 +11,9 @@ public record ServerTypeInfo(
     string DisplayName,
     string Tag,
     string Description,
-    bool HasAutoDownload);
+    bool HasAutoDownload,
+    string? DownloadUrl = null,
+    string? ManualInstructions = null);
 
 /// <summary>
 /// Orchestrates server-JAR and Java downloads. One download of each kind at a
@@ -28,14 +30,22 @@ public sealed class SetupService
             "High-performance Spigot fork with extra optimisations. Supports all Bukkit/Spigot plugins.",
             HasAutoDownload: true),
         new(ServerType.Spigot, "Spigot", "PLUGIN",
-            "Community-driven Bukkit fork. Requires BuildTools to compile — manual install.",
-            HasAutoDownload: false),
+            "Community-driven Bukkit fork. Cannot be redistributed — BuildTools compiles it from source on your machine.",
+            HasAutoDownload: false,
+            DownloadUrl: "https://www.spigotmc.org/wiki/buildtools/",
+            ManualInstructions:
+                "java -jar BuildTools.jar --rev latest\n" +
+                "# Downloads BuildTools.jar from the link above first. Produces spigot-<version>.jar in this folder."),
         new(ServerType.Fabric, "Fabric", "MODDED",
-            "Lightweight mod loader for performance mods and technical gameplay. Manual install.",
-            HasAutoDownload: false),
+            "Lightweight mod loader for performance mods and technical gameplay.",
+            HasAutoDownload: true),
         new(ServerType.Forge, "Forge", "MODDED",
-            "The most popular platform for large modpacks. Installer required — manual install.",
-            HasAutoDownload: false),
+            "The most popular platform for large modpacks. The installer produces a run script and libraries folder, not a single jar.",
+            HasAutoDownload: false,
+            DownloadUrl: "https://files.minecraftforge.net/",
+            ManualInstructions:
+                "java -jar forge-<version>-installer.jar --installServer\n" +
+                "# Downloads the installer for your Minecraft version from the link above first, then run it in this folder."),
         new(ServerType.Purpur, "Purpur", "EXTENDED",
             "Paper fork with extra configuration and gameplay tweaks.",
             HasAutoDownload: true),
