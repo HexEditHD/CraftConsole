@@ -134,13 +134,11 @@ jobs:
           sudo apt-get install -y "./$DEB"
 
           sudo systemctl start craftconsole.service
-          for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null http://127.0.0.1:5178/api/auth/status; then break; fi
-            if [ "$i" -eq 30 ]; then
-              sudo journalctl -u craftconsole --no-pager -n 60; exit 1
-            fi
-            sleep 1
-          done
+          chmod +x packaging/wait-for-panel.sh
+          if ! packaging/wait-for-panel.sh; then
+            sudo journalctl -u craftconsole --no-pager -n 60
+            exit 1
+          fi
           sudo systemctl is-active --quiet craftconsole.service
 
           sudo apt-get purge -y craftconsole
