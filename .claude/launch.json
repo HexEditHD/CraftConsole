@@ -4,7 +4,7 @@
     {
       "name": "craftconsole-web",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "src/CraftConsole.Web", "--no-launch-profile", "--", "--environment", "Development", "--no-browser"],
+      "runtimeArgs": ["run", "--project", "src/CraftConsole.Web", "--no-launch-profile", "--", "--environment", "Development", "--no-browser", "--http"],
       "port": 5178
     },
     {

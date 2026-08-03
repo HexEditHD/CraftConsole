@@ -75,16 +75,11 @@ jobs:
 
           # GitHub runners do run systemd, so the unit should actually come up.
           sudo systemctl start craftconsole.service
-          for i in $(seq 1 30); do
-            # -k: the panel serves a self-signed certificate by default (see TlsCertificateProvider).
-            if curl -fsSk -o /dev/null https://127.0.0.1:5178/api/auth/status; then
-              echo "Panel responded after ${i}s"; break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "Panel did not respond in time"; sudo journalctl -u craftconsole --no-pager -n 60; exit 1
-            fi
-            sleep 1
-          done
+          chmod +x packaging/wait-for-panel.sh
+          if ! packaging/wait-for-panel.sh; then
+            sudo journalctl -u craftconsole --no-pager -n 60
+            exit 1
+          fi
 
           sudo systemctl is-active --quiet craftconsole.service
           test -d /var/lib/craftconsole

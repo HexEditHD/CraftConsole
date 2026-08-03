@@ -3,7 +3,7 @@
   "profiles": {
     "CraftConsole.Web": {
       "commandName": "Project",
-      "applicationUrl": "http://127.0.0.1:5178",
+      "applicationUrl": "https://127.0.0.1:5178",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
