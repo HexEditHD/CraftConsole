@@ -92,7 +92,10 @@ export default {
     const hideJump = () => { jumpBtn.style.display = 'none'; };
 
     // ── Input row ────────────────────────────────────────────────────────
-    const suggestBox = h('div', { class: 'suggestions', style: { display: 'none' } });
+    const suggestBox = h('div', {
+      class: 'suggestions', style: { display: 'none' },
+      onmousedown: e => { if (e.target === suggestBox) e.preventDefault(); },
+    });
 
     const input = h('input', {
       class: 'input',
@@ -222,6 +225,7 @@ export default {
           ? Math.min(selSuggestion + 1, items.length - 1)
           : Math.max(selSuggestion - 1, 0);
         items.forEach((it, i) => it.classList.toggle('sel', i === selSuggestion));
+        items[selSuggestion]?.scrollIntoView({ block: 'nearest' });
         return;
       }
       if (visible && e.key === 'Tab') {
@@ -258,7 +262,7 @@ export default {
     function refreshSuggestions() {
       const value = input.value;
       if (!value.startsWith('/')) { hideSuggestions(); return; }
-      const found = COMMANDS.filter(c => c.startsWith(value.toLowerCase())).slice(0, 8);
+      const found = COMMANDS.filter(c => c.startsWith(value.toLowerCase()));
       if (!found.length || (found.length === 1 && found[0] === value)) { hideSuggestions(); return; }
       suggestBox.innerHTML = '';
       selSuggestion = -1;
@@ -267,6 +271,7 @@ export default {
           class: 'suggestion',
           onmousedown: e => { e.preventDefault(); acceptSuggestion(cmd); },
         }, cmd));
+      suggestBox.scrollTop = 0;
       suggestBox.style.display = '';
     }
 

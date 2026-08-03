@@ -147,6 +147,23 @@ public class SchedulerServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SetEnabled_flips_the_flag_without_touching_other_fields()
+    {
+        var task = await _scheduler.AddAsync(IntervalTask());
+
+        Assert.True(await _scheduler.SetEnabledAsync(task.Id, false));
+        var disabled = _scheduler.Snapshot().Single();
+        Assert.False(disabled.IsEnabled);
+        Assert.Equal("Autosave", disabled.Name);
+        Assert.Equal("60", disabled.TriggerValue);
+
+        Assert.True(await _scheduler.SetEnabledAsync(task.Id, true));
+        Assert.True(_scheduler.Snapshot().Single().IsEnabled);
+
+        Assert.False(await _scheduler.SetEnabledAsync(Guid.NewGuid(), true));
+    }
+
+    [Fact]
     public async Task Loading_keeps_a_task_added_before_the_loop_started()
     {
         // The service is registered as both a singleton and a hosted service, so an
@@ -212,6 +229,22 @@ public class SchedulerServiceTests : IDisposable
         await _scheduler.AddAsync(task);
         await StartLoopAsync();
 
+        await AdvanceAsync(120);
+
+        Assert.Empty(await WaitForRunsAsync(names, 1, 400));
+        await _scheduler.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Disabling_a_task_via_SetEnabled_stops_it_from_firing()
+    {
+        var (names, subscription) = ObserveRuns();
+        using var _ = subscription;
+
+        var task = await _scheduler.AddAsync(IntervalTask(60));
+        await StartLoopAsync();
+
+        await _scheduler.SetEnabledAsync(task.Id, false);
         await AdvanceAsync(120);
 
         Assert.Empty(await WaitForRunsAsync(names, 1, 400));

@@ -75,6 +75,19 @@ public sealed class SchedulerService : BackgroundService
         return true;
     }
 
+    public async Task<bool> SetEnabledAsync(Guid id, bool enabled)
+    {
+        lock (_lock)
+        {
+            var task = _tasks.FirstOrDefault(t => t.Id == id);
+            if (task is null) return false;
+            task.IsEnabled = enabled;
+            ScheduleNextDue(task);
+        }
+        await SaveAndPublishAsync();
+        return true;
+    }
+
     public async Task<bool> DeleteAsync(Guid id)
     {
         lock (_lock)

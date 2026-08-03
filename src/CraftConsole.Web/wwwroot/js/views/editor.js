@@ -134,6 +134,8 @@ export default {
         tabBar.append(h('button', {
           class: `editor-tab${tab === active ? ' active' : ''}`,
           onclick: e => { if (!e.target.closest('.close')) setActive(tab); },
+          onmousedown: e => { if (e.button === 1) e.preventDefault(); },
+          onauxclick: e => { if (e.button === 1) closeTab(tab); },
         },
           tab.dirty ? h('span', { class: 'dirty-dot', title: 'Unsaved changes' }) : null,
           tab.name,

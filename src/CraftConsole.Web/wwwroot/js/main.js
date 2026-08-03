@@ -1,8 +1,9 @@
 // App shell: navigation, hash router, topbar status cluster, EULA banner.
-import { h, icon, toast, confirmDialog } from './ui.js';
+import { h, icon, toast } from './ui.js';
 import { api } from './api.js';
 import { connectSse, on } from './bus.js';
 import { state, initStore } from './store.js';
+import { createServerControls } from './components/server-controls.js';
 
 import dashboard from './views/dashboard.js';
 import consoleView from './views/console.js';
@@ -65,7 +66,7 @@ function route() {
 }
 
 // ── Topbar cluster ──────────────────────────────────────────────────────
-let pill, playersChip, profileChip, btnStart, btnStop, btnRestart;
+let pill, playersChip, profileChip, controls;
 
 function buildTopbar() {
   const cluster = document.getElementById('topbar-cluster');
@@ -80,20 +81,15 @@ function buildTopbar() {
 
   playersChip = h('span', { class: 'badge', title: 'Players online' }, '0 online');
 
-  btnStart = h('button', { class: 'btn primary sm', onclick: startServer }, icon('play'), 'Start');
-  btnRestart = h('button', { class: 'btn sm icon-only', title: 'Restart', onclick: restartServer }, icon('refresh'));
-  btnStop = h('button', { class: 'btn danger sm', onclick: stopServer }, icon('stop'), 'Stop');
+  controls = createServerControls();
 
-  cluster.append(profileChip, pill, playersChip, btnStart, btnRestart, btnStop);
+  cluster.append(profileChip, pill, playersChip, controls.el);
   syncTopbar();
 }
 
 function syncTopbar() {
   const s = state.status;
   const status = s?.status ?? 'Stopped';
-  // Defaults match a managed server, so the buttons behave exactly as before
-  // until the first /api/status response actually carries capabilities.
-  const caps = s?.capabilities ?? { canStart: true, canStop: true, canRestart: true };
 
   pill.className = `status-pill ${status.toLowerCase()}`;
   pill.textContent = status;
@@ -102,50 +98,9 @@ function syncTopbar() {
 
   profileChip.querySelector('span.name').textContent = s?.profile?.name ?? 'No profile';
 
-  const running = status === 'Running';
-  const busy = status === 'Starting' || status === 'Stopping';
-  btnStart.disabled = running || busy || !caps.canStart;
-  btnStart.title = s?.profile?.mode === 'Rcon' ? 'Connect' : '';
-  btnStop.disabled = !running || !caps.canStop;
-  btnRestart.disabled = !running || !caps.canRestart;
-  btnRestart.title = caps.canRestart
-    ? 'Restart'
-    : 'This server is connected over RCON and can’t be restarted from here';
+  controls.sync();
 
   syncEulaBanner(s?.eulaRequired === true);
-}
-
-async function startServer() {
-  btnStart.disabled = true;
-  try {
-    await api.post('/api/server/start', {});
-    toast('Server starting…');
-  } catch (err) {
-    toast(err.message, 'err');
-    syncTopbar();
-  }
-}
-
-async function stopServer() {
-  if (!await confirmDialog('Stop server', 'Stop the Minecraft server? Connected players will be disconnected.', { danger: true, okLabel: 'Stop server' }))
-    return;
-  try {
-    await api.post('/api/server/stop');
-    toast('Stopping server…');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-}
-
-async function restartServer() {
-  if (!await confirmDialog('Restart server', 'Restart the Minecraft server now?', { okLabel: 'Restart' }))
-    return;
-  try {
-    toast('Restarting server…');
-    await api.post('/api/server/restart');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
 }
 
 // ── EULA banner ─────────────────────────────────────────────────────────

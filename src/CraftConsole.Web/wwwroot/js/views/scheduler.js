@@ -84,7 +84,7 @@ export default {
 
       list.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
         h('thead', {}, h('tr', {},
-          h('th', { style: { width: '46px' } }, ''),
+          h('th', { style: { width: '46px' } }, 'On'),
           h('th', {}, 'Task'), h('th', {}, 'Trigger'), h('th', {}, 'Action'), h('th', {}))),
         h('tbody', {}, tasks.map(task => {
           const triggerWarn = unsupportedReason(task.triggerType, 'trigger');
@@ -94,10 +94,12 @@ export default {
               h('label', { class: 'switch', title: task.isEnabled ? 'Enabled' : 'Disabled' },
                 h('input', {
                   type: 'checkbox', checked: task.isEnabled,
+                  'aria-label': `${task.isEnabled ? 'Disable' : 'Enable'} “${task.name}”`,
                   onchange: e => toggle(task, e.target.checked),
                 }),
                 h('span', { class: 'track' }))),
-            h('td', { style: { fontWeight: 600 } }, task.name),
+            h('td', { style: { fontWeight: 600 } }, task.name,
+              task.isEnabled ? null : h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Disabled')),
             h('td', {}, h('span', { class: 'badge info' }, triggerLabel(task)),
               triggerWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
             h('td', { class: 'mono small text-2' }, actionLabel(task),
@@ -122,7 +124,7 @@ export default {
     }
 
     async function toggle(task, enabled) {
-      try { await api.put(`/api/tasks/${task.id}`, { ...task, isEnabled: enabled }); }
+      try { await api.post(`/api/tasks/${task.id}/enabled`, { enabled }); }
       catch (err) { toast(err.message, 'err'); build(); }
     }
 

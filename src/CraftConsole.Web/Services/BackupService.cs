@@ -59,6 +59,7 @@ public sealed class BackupService
             job.SourcePaths = updated.SourcePaths;
             job.DestinationPath = updated.DestinationPath;
             job.Compression = updated.Compression;
+            job.IsEnabled = updated.IsEnabled;
         }
         await SaveAndPublishAsync();
         return true;
@@ -77,12 +78,19 @@ public sealed class BackupService
         return true;
     }
 
+    public sealed class BackupDisabledException : InvalidOperationException
+    {
+        public BackupDisabledException(string message) : base(message) { }
+    }
+
     public async Task<bool> RunAsync(Guid id)
     {
         var jobs = await JobsAsync();
         BackupJob? job;
         lock (_lock) job = jobs.FirstOrDefault(j => j.Id == id);
         if (job is null) return false;
+        if (!job.IsEnabled)
+            throw new BackupDisabledException($"“{job.Name}” is disabled — enable it before running.");
 
         _broker.Publish("backup-run", new { job.Id, job.Name, Phase = "running" });
         try
