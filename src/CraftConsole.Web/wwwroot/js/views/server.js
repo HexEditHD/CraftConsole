@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
 import { createServerControls } from '../components/server-controls.js';
+import { joinPath } from '../platform.js';
 
 export default {
   id: 'server',
@@ -19,7 +20,6 @@ export default {
     let selectedType = null;
     let downloadedJar = null; // {jarPath, version, type}
     let installedJavaPath = null;
-    let hostPlatform = null; // 'windows' | 'linux' | 'other', from /api/setup/java/versions
 
     // ── Profiles card ────────────────────────────────────────────────────
     const profileList = h('div', { class: 'grid' });
@@ -33,12 +33,31 @@ export default {
     // ── Server download card ────────────────────────────────────────────
     const typeGrid = h('div', { class: 'type-grid' });
     const versionSelect = h('select', { class: 'select' }, h('option', { value: '' }, 'Latest'));
-    const dirInput = h('input', { class: 'input', placeholder: 'C:\\MinecraftServers\\my-server' });
+    const dirInput = h('input', {
+      class: 'input',
+      placeholder: joinPath(state.system?.defaultServerRoot ?? 'C:\\MinecraftServers', 'my-server'),
+    });
     const dlBtn = h('button', { class: 'btn primary', onclick: startServerDownload }, icon('download'), 'Download JAR');
     const dlCancel = h('button', { class: 'btn sm ghost', style: { display: 'none' }, onclick: () => api.post('/api/setup/cancel/server') }, 'Cancel');
     const dlBar = h('div', { class: 'progress', style: { display: 'none' } }, h('div'));
     const dlMsg = h('span', {}, '');
     const dlStatus = h('div', { class: 'dl-status' }, dlMsg, dlBar, dlCancel);
+
+    const manualCommands = h('pre', {
+      class: 'mono', style: {
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
+        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
+        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+      },
+    });
+    const manualLink = h('a', { target: '_blank', rel: 'noopener noreferrer' }, 'Official website');
+    const manualBox = h('div', { style: { display: 'none', marginTop: '12px' } },
+      h('div', { class: 'switch-desc' }, 'Automated download not available — get it from the ', manualLink, ':'),
+      manualCommands,
+      h('button', {
+        class: 'btn sm ghost',
+        onclick: () => { navigator.clipboard.writeText(manualCommands.textContent); toast('Commands copied'); },
+      }, icon('copy'), 'Copy'));
 
     const downloadCard = h('div', { class: 'card' },
       h('div', { class: 'card-title' }, 'Download a server JAR'),
@@ -47,7 +66,8 @@ export default {
         h('div', { class: 'field' }, h('label', {}, 'Version'), versionSelect),
         h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Destination folder'), dirInput)),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, dlBtn),
-      dlStatus);
+      dlStatus,
+      manualBox);
 
     // ── Java card ────────────────────────────────────────────────────────
     const javaList = h('div');
@@ -182,7 +202,7 @@ export default {
           h('option', { value: 'Managed', selected: seed.mode !== 'Rcon' }, 'Managed — the panel launches the server'),
           h('option', { value: 'Rcon', selected: seed.mode === 'Rcon' }, 'Remote — attach via RCON')),
         name: h('input', { class: 'input', value: seed.name }),
-        jar: h('input', { class: 'input', value: seed.jarPath, placeholder: 'C:\\…\\paper-1.21.4.jar' }),
+        jar: h('input', { class: 'input', value: seed.jarPath, placeholder: joinPath('…', 'paper-1.21.4.jar') }),
         dir: h('input', { class: 'input', value: seed.workingDirectory, placeholder: 'Defaults to the JAR’s folder' }),
         java: h('select', { class: 'select' },
           javaInstalls.map(j => h('option', { value: j.executablePath, selected: j.executablePath === seed.javaPath }, j.label)),
@@ -317,9 +337,17 @@ export default {
       }
       const manual = selectedType && !selectedType.hasAutoDownload;
       dlBtn.disabled = manual;
-      dlMsg.textContent = manual
-        ? 'Automated download not available for this type — get it from the official website.'
-        : '';
+      dlMsg.textContent = '';
+      if (manual && selectedType.downloadUrl) {
+        manualLink.href = selectedType.downloadUrl;
+        manualCommands.textContent = selectedType.manualInstructions ?? '';
+        manualBox.style.display = '';
+      } else {
+        manualBox.style.display = 'none';
+        dlMsg.textContent = manual
+          ? 'Automated download not available for this type — get it from the official website.'
+          : '';
+      }
     }
 
     async function loadVersions() {
@@ -329,7 +357,7 @@ export default {
       try {
         const versions = await api.get(`/api/setup/server/versions?type=${selectedType.type}`);
         for (const v of versions) versionSelect.append(h('option', { value: v }, v));
-      } catch { /* keep Latest */ }
+      } catch (err) { toast(err.message, 'err'); }
     }
 
     async function startServerDownload() {
@@ -370,7 +398,6 @@ export default {
     async function loadJavaVersions() {
       try {
         const data = await api.get('/api/setup/java/versions');
-        hostPlatform = data.platform;
         javaVersions = data.versions ?? [];
       } catch { javaVersions = []; }
       javaSelect.innerHTML = '';
@@ -382,7 +409,7 @@ export default {
     // Debian/Ubuntu only — matches what this project actually packages and ships.
     function syncJavaLinuxHint() {
       const major = parseInt(javaSelect.value, 10) || javaVersions[0]?.major;
-      if (hostPlatform !== 'linux' || !major) { javaLinuxHint.style.display = 'none'; return; }
+      if (state.system?.platform !== 'linux' || !major) { javaLinuxHint.style.display = 'none'; return; }
       javaLinuxHint.style.display = '';
       javaLinuxCommands.textContent =
         'sudo apt-get install -y wget apt-transport-https gpg\n' +

@@ -274,3 +274,7 @@ clean runner, and publishes with `SHA256SUMS`.
   unavailable rather than guessing.
 - Player geolocation calls `ipinfo.io` without an API key. It is best-effort, rate-limited,
   and sends player IP addresses to a third party.
+- **`[Not Secure]` in the console isn't a CraftConsole or TLS warning.** It's the Minecraft
+  server's own chat-signing system (since 1.19) prefixing unsigned messages — including `/say`
+  and anything else sent from outside a signed client connection. Nothing in the panel produces
+  that string; it's the server telling you a message's authenticity wasn't verified.

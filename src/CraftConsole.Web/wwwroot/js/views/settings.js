@@ -210,7 +210,7 @@ export default {
       h('div', { class: 'card-title' }, 'About'),
       h('p', { class: 'text-2 small' },
         'CraftConsole — a local web panel for managing Minecraft servers. ',
-        'Settings, profiles, tasks, and backups persist in %APPDATA%\\CraftConsole.'),
+        `Settings, profiles, tasks, and backups persist in ${state.system?.dataDirectory ?? 'the app data directory'}.`),
       h('p', { class: 'muted small', style: { marginTop: '8px' } },
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 

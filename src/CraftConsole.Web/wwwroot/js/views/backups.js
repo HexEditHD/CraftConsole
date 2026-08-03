@@ -3,6 +3,7 @@ import { h, icon, toast, confirmDialog, modal, timeAgo, fmtSize } from '../ui.js
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
+import { joinPath } from '../platform.js';
 
 export default {
   id: 'backups',
@@ -178,8 +179,8 @@ export default {
       const workingDir = state.status?.profile?.workingDirectory ?? '';
       const f = {
         name: h('input', { class: 'input', value: job?.name ?? 'World backup' }),
-        sources: h('textarea', { class: 'textarea', placeholder: 'One path per line', value: (job?.sourcePaths ?? (workingDir ? [workingDir + '\\world'] : [])).join('\n') }),
-        dest: h('input', { class: 'input', value: job?.destinationPath ?? '', placeholder: 'C:\\Backups\\minecraft' }),
+        sources: h('textarea', { class: 'textarea', placeholder: 'One path per line', value: (job?.sourcePaths ?? (workingDir ? [joinPath(workingDir, 'world')] : [])).join('\n') }),
+        dest: h('input', { class: 'input', value: job?.destinationPath ?? '', placeholder: state.system?.defaultBackupRoot ?? 'C:\\Backups\\minecraft' }),
         compression: h('select', { class: 'select' },
           ['Optimal', 'Fastest', 'NoCompression'].map(c =>
             h('option', { value: c, selected: (job?.compression ?? 'Optimal') === c }, c))),

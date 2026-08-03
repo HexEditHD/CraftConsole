@@ -174,6 +174,7 @@ app.MapPlayersApi();
 app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
+app.MapSystemApi();
 
 if (httpsEnabled)
     app.MapTlsApi();

@@ -87,12 +87,7 @@ public static class SetupApi
         });
 
         app.MapGet("/api/setup/java/versions", async (SetupService setup, CancellationToken ct) =>
-        {
-            // Lets the frontend show a Debian/Ubuntu install-command hint alongside the
-            // download — this is the endpoint it already calls to populate that same picker.
-            var platform = OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsLinux() ? "linux" : "other";
-            return Results.Json(new { Platform = platform, Versions = await setup.FetchJavaVersionsAsync(ct) }, Json.Options);
-        });
+            Results.Json(new { Versions = await setup.FetchJavaVersionsAsync(ct) }, Json.Options));
 
         app.MapPost("/api/setup/java/download", (JavaDownloadRequest req, SetupService setup) =>
             setup.StartJavaDownload(req.Major)
@@ -103,10 +98,15 @@ public static class SetupApi
         app.MapGet("/api/setup/server/types", () =>
             Results.Json(SetupService.AllServerTypes, Json.Options));
 
-        app.MapGet("/api/setup/server/versions", async (ServerType type, SetupService setup, CancellationToken ct) =>
+        app.MapGet("/api/setup/server/versions", async (ServerType type, SetupService setup, ILogger<SetupService> log, CancellationToken ct) =>
         {
             try { return Results.Json(await setup.FetchServerVersionsAsync(type, ct), Json.Options); }
-            catch { return Results.Json(new List<string>(), Json.Options); }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Could not fetch {Type} versions", type);
+                return Results.Json(new { Message = $"Could not fetch versions from the {type} API: {ex.Message}" },
+                    Json.Options, statusCode: StatusCodes.Status502BadGateway);
+            }
         });
 
         app.MapPost("/api/setup/server/download", (ServerDownloadRequest req, SetupService setup) =>

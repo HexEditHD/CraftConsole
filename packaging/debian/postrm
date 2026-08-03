@@ -17,6 +17,10 @@ case "$1" in
     fi
 
     rm -rf "$CC_DATA"
+
+    # /srv/minecraft deliberately survives purge, unlike $CC_DATA above: it
+    # holds actual Minecraft world data the admin put there, not panel state.
+    # A purge that deleted worlds out from under someone would be a disaster.
     ;;
 
   remove)
