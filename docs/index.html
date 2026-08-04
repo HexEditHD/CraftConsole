@@ -703,11 +703,11 @@
 <!-- ── Stats ── -->
 <div class="stats-bar">
   <div class="stat-item">
-    <div class="stat-number">10</div>
+    <div class="stat-number">11</div>
     <div class="stat-label">Feature modules</div>
   </div>
   <div class="stat-item">
-    <div class="stat-number">140+</div>
+    <div class="stat-number">180+</div>
     <div class="stat-label">Automated tests</div>
   </div>
   <div class="stat-item">
@@ -774,9 +774,9 @@
         <div class="feature-desc">Create a profile for a server you launch or one you attach to, download a JAR and a JVM, then start, stop or restart.</div>
       </button>
       <div class="feature-detail-source">
-        <p><strong>What it does.</strong> Profiles in two modes — Managed, where the panel launches and owns the process, or Remote, attached over RCON — plus start/stop/restart, a guided server-JAR download (Vanilla, Paper and Purpur auto-download with a version picker, progress and cancel), and Java runtime detection with one-click downloads.</p>
+        <p><strong>What it does.</strong> Profiles in two modes — Managed, where the panel launches and owns the process, or Remote, attached over RCON — plus start/stop/restart, a guided server-JAR download (Vanilla, Paper, Purpur, Fabric and NeoForge auto-download with a version picker, progress and cancel; Spigot and classic Forge get a direct link and copy-pasteable instructions instead, since neither can be redistributed or automated), and Java runtime detection — one click and a UAC prompt on Windows, copy-pasteable <code>apt</code> commands on Linux.</p>
         <p><strong>How it works.</strong> A Managed profile launches the JAR as a child process and reads its output directly; a Remote profile authenticates over RCON instead.</p>
-        <p><strong>Limits.</strong> One active server at a time.</p>
+        <p><strong>Limits.</strong> One active server at a time. NeoForge additionally needs a detected Java runtime before it can install — download or detect one first.</p>
       </div>
     </div>
 
@@ -823,10 +823,10 @@
       <button class="feature-card-trigger" type="button" data-feature="backups" aria-expanded="false" aria-controls="feature-panel">
         <div class="feature-icon" aria-hidden="true">🗄️</div>
         <div class="feature-title"><span>Backups &amp; Restore</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
-        <div class="feature-desc">Zip any set of folders to a destination on demand, and restore an archive back when you need it.</div>
+        <div class="feature-desc">Zip any set of folders to a destination on demand or on a schedule, and restore an archive back when you need it.</div>
       </button>
       <div class="feature-detail-source">
-        <p><strong>What it does.</strong> Backup job definitions — a name, one or more source paths, a destination and a compression level — run-on-demand with live progress, an archive list per job, and restore into a chosen directory.</p>
+        <p><strong>What it does.</strong> Backup job definitions — a name, one or more source paths, a destination and a compression level — run on demand or from a scheduled task, with live progress, an archive list per job, and restore into a chosen directory. Jobs can be disabled without deleting them.</p>
         <p><strong>How it works.</strong> Restoring extracts the archive over the target directory, overwriting only files with matching names; every entry is checked to stay within the target before it's written.</p>
         <p><strong>Limits.</strong> Restoring requires the server to be stopped first — writing over a live world would just be overwritten by the next autosave.</p>
       </div>
@@ -836,10 +836,10 @@
       <button class="feature-card-trigger" type="button" data-feature="scheduler" aria-expanded="false" aria-controls="feature-panel">
         <div class="feature-icon" aria-hidden="true">🕐</div>
         <div class="feature-title"><span>Scheduler</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
-        <div class="feature-desc">Run a command, broadcast a message, or restart — on an interval, at a time, or on a game event.</div>
+        <div class="feature-desc">Run a command, broadcast a message, restart, or trigger a backup — on an interval, at a time, or on a game event.</div>
       </button>
       <div class="feature-detail-source">
-        <p><strong>What it does.</strong> Triggers on an interval in seconds, a daily time, a player joining, or the server becoming ready; actions to run a console command, broadcast a message, or restart the server. Tasks can be enabled, disabled, or run on demand.</p>
+        <p><strong>What it does.</strong> Triggers on an interval in seconds, a daily time, a player joining, or the server becoming ready; actions to run a console command, broadcast a message, restart the server, or run a configured backup job. Tasks can be enabled, disabled, or run on demand.</p>
         <p><strong>How it works.</strong> Triggers and actions run against whatever server is currently active, managed or RCON alike.</p>
         <p><strong>Limits.</strong> A trigger or action that can't fire on the current connection — Restart or "server ready" over RCON — shows as disabled with why, rather than sitting there silently never running.</p>
       </div>
@@ -861,12 +861,12 @@
     <div class="feature-card">
       <button class="feature-card-trigger" type="button" data-feature="security" aria-expanded="false" aria-controls="feature-panel">
         <div class="feature-icon" aria-hidden="true">🔒</div>
-        <div class="feature-title"><span>Password-Protected</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
-        <div class="feature-desc">One password gates the whole panel, hashed and rate-limited — plus display and colour preferences.</div>
+        <div class="feature-title"><span>Multi-User &amp; Roles</span><span class="feature-chevron" aria-hidden="true">▾</span></div>
+        <div class="feature-desc">Admin and Operator accounts gate the whole panel, hashed and rate-limited — plus display and colour preferences.</div>
       </button>
       <div class="feature-detail-source">
-        <p><strong>What it does.</strong> A single operator password (PBKDF2-SHA256, 210,000 iterations) required for every request once set; server-held sessions; a lockout per IP after 5 failed attempts. Settings also covers console display (timestamps, auto-scroll, buffer size) and per-level colour customisation.</p>
-        <p><strong>How it works.</strong> First run is loopback-only, so setup can't be hijacked over the network even if the panel is bound wider afterwards.</p>
+        <p><strong>What it does.</strong> Multi-user accounts (PBKDF2-SHA256, 210,000 iterations) with Admin or Operator roles — Admin manages everything including other users, downloads, settings and TLS; Operator covers day-to-day operation: console, players, moderation, start/stop/restart, and running existing backups. Server-held sessions per user; a lockout per IP after 5 failed attempts. Settings also covers console display (timestamps, auto-scroll, buffer size) and per-level colour customisation.</p>
+        <p><strong>How it works.</strong> First run creates a single Admin account and is loopback-only, so setup can't be hijacked over the network even if the panel is bound wider afterwards. At least one enabled Admin always exists — the panel refuses to delete, disable or demote the last one.</p>
         <p><strong>Limits.</strong> TLS is self-signed by default — expect a one-time browser warning unless you upload your own certificate in Settings.</p>
       </div>
     </div>

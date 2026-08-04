@@ -24,14 +24,15 @@ players, files, plugins, backups and scheduled tasks — all from one password-p
 - **Files and plugins** — a config editor jailed to the server's own directory (allowlisted
   extensions, 2 MB cap), and a plugin browser that reads each jar's `plugin.yml` and can
   disable one without deleting it.
-- **Automation** — backup jobs with on-demand runs and restore into a chosen directory, and a
-  scheduler with interval/daily/player-join/server-ready triggers and command/broadcast/restart
-  actions.
+- **Automation** — backup jobs with on-demand or scheduled runs and restore into a chosen
+  directory, and a scheduler with interval/daily/player-join/server-ready triggers and
+  command/broadcast/restart/run-backup actions. Both backup jobs and tasks can be disabled
+  without deleting them.
 - **Diagnostics** — a live dashboard (machine and process CPU/RAM, uptime, player count) and an
   issues feed that distills warnings and errors out of the console automatically.
-- **Security** — a single operator password (PBKDF2-SHA256), server-held sessions, a per-IP
-  lockout after repeated failures, loopback-only first-run setup, and RCON passwords encrypted
-  at rest.
+- **Security** — multi-user accounts with Admin/Operator roles (PBKDF2-SHA256, server-held
+  sessions), a per-IP lockout after repeated failures, loopback-only first-run setup, and RCON
+  passwords encrypted at rest.
 
 A connection that can't do something — RCON has no filesystem or log stream, for example —
 says so explicitly rather than failing silently or showing an empty list. See
@@ -176,7 +177,8 @@ the address you're using (see [TLS](#tls) above) if you don't want that.
 
 ## Where things are kept
 
-Profiles, scheduled tasks, backup definitions, settings, the password hash and logs:
+Profiles, scheduled tasks, backup definitions, settings, user accounts and their password
+hashes, and logs:
 
 | Platform | Location |
 |---|---|
