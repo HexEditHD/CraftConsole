@@ -1,7 +1,7 @@
 namespace CraftConsole.Core.Models;
 
 public enum TriggerType { Interval, TimeCron, PlayerJoin, ServerReady }
-public enum TaskActionType { SendCommand, BroadcastMessage, RestartServer }
+public enum TaskActionType { SendCommand, BroadcastMessage, RestartServer, RunBackup }
 
 public class ScheduledTask
 {
