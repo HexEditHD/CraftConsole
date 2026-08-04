@@ -97,7 +97,10 @@ function buildTopbar() {
 
   controls = createServerControls();
 
-  cluster.append(profileChip, pill, playersChip, controls.el);
+  cluster.append(
+    h('div', { class: 'topbar-group' }, profileChip, pill, playersChip),
+    h('span', { class: 'topbar-divider' }),
+    h('div', { class: 'topbar-group' }, controls.el));
   syncTopbar();
 }
 
