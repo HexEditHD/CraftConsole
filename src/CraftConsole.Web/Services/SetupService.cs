@@ -46,6 +46,9 @@ public sealed class SetupService
             ManualInstructions:
                 "java -jar forge-<version>-installer.jar --installServer\n" +
                 "# Downloads the installer for your Minecraft version from the link above first, then run it in this folder."),
+        new(ServerType.NeoForge, "NeoForge", "MODDED",
+            "Community-driven continuation of Forge for modern Minecraft versions.",
+            HasAutoDownload: true),
         new(ServerType.Purpur, "Purpur", "EXTENDED",
             "Paper fork with extra configuration and gameplay tweaks.",
             HasAutoDownload: true),
@@ -95,7 +98,12 @@ public sealed class SetupService
 
                 Directory.CreateDirectory(directory);
                 var typeInfo = AllServerTypes.First(t => t.Type == type);
-                var fileName = $"{typeInfo.DisplayName.ToLowerInvariant()}-{resolved}.jar";
+                // NeoForge downloads ServerStarterJar, not the server itself — it self-installs
+                // in place via NeoForgeInstaller below, matching its own "server.jar" convention
+                // rather than this type's usual "{type}-{version}.jar" naming.
+                var fileName = type == ServerType.NeoForge
+                    ? "server.jar"
+                    : $"{typeInfo.DisplayName.ToLowerInvariant()}-{resolved}.jar";
                 var destPath = Path.Combine(directory, fileName);
 
                 Publish("server", "downloading", 0, $"Downloading {typeInfo.DisplayName} {resolved}…");
@@ -103,7 +111,11 @@ public sealed class SetupService
                     Publish("server", "downloading", p, $"Downloading {typeInfo.DisplayName} {resolved}…"));
 
                 await _serverDownload.DownloadAsync(url, destPath, progress, cts.Token);
-                Publish("server", "done", 1, $"Downloaded {fileName}", new { JarPath = destPath, Version = resolved });
+
+                if (type == ServerType.NeoForge)
+                    await InstallNeoForgeAsync(destPath, resolved, cts.Token);
+
+                Publish("server", "done", 1, $"Downloaded {typeInfo.DisplayName} {resolved}", new { JarPath = destPath, Version = resolved });
             }
             catch (NotSupportedException ex) { Publish("server", "error", 0, ex.Message); }
             catch (OperationCanceledException) { Publish("server", "cancelled", 0, "Download cancelled."); }
@@ -118,6 +130,23 @@ public sealed class SetupService
             }
         });
         return true;
+    }
+
+    /// <summary>
+    /// Runs ServerStarterJar's --installer step so the downloaded jar is actually runnable —
+    /// without this, launching it would just print ServerStarterJar's own "no run scripts found
+    /// and no --installer given" message instead of starting a server.
+    /// </summary>
+    private async Task InstallNeoForgeAsync(string jarPath, string version, CancellationToken ct)
+    {
+        Publish("server", "installing", 0.9, $"Installing NeoForge {version} (this can take a minute)…");
+
+        var installs = await JavaInstallationDetector.DetectAsync(ct);
+        var java = installs.OrderByDescending(j => j.MajorVersion).FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "No Java runtime was found. Detect or download one on this page, then download NeoForge again.");
+
+        await NeoForgeInstaller.RunAsync(java.ExecutablePath, jarPath, version, ct);
     }
 
     /// <summary>Starts a Java (Temurin) download to the user's Downloads folder.</summary>

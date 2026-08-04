@@ -1,18 +1,28 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using CraftConsole.Core.Models;
 
 namespace CraftConsole.Infrastructure.Http;
 
 /// <summary>
 /// Resolves, lists, and downloads server JARs for supported server types.
-/// Supported: Vanilla, Paper, Purpur, Fabric.
-/// Unsupported (manual download): Spigot, Forge.
+/// Supported: Vanilla, Paper, Purpur, Fabric, NeoForge.
+/// Unsupported (manual download): Spigot, Forge — see SetupService.AllServerTypes for why
+/// classic Forge stays manual even though NeoForge, its sibling, is automated.
 /// </summary>
 public class ServerDownloadService
 {
     // fill.papermc.io and meta.fabricmc.net both expect a descriptive client
     // identifier rather than a bare/default one.
     private const string UserAgent = "CraftConsole (+https://github.com/HexEditHD/CraftConsole)";
+
+    // ServerStarterJar wraps the real NeoForge installer so the result behaves like any other
+    // single-jar server (see NeoForgeInstaller). One stable URL regardless of NeoForge version —
+    // the version-specific installer is what it downloads on first run via --installer.
+    private const string ServerStarterJarUrl =
+        "https://github.com/neoforged/ServerStarterJar/releases/latest/download/server.jar";
+    private const string NeoForgeMavenMetadataUrl =
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 
     private readonly HttpClient _http;
     private readonly DownloadService _downloader;
@@ -35,6 +45,7 @@ public class ServerDownloadService
             ServerType.Vanilla => FetchVanillaVersionsAsync(ct),
             ServerType.Purpur  => FetchPurpurVersionsAsync(ct),
             ServerType.Fabric  => FetchFabricVersionsAsync(ct),
+            ServerType.NeoForge => FetchNeoForgeVersionsAsync(ct),
             _                  => Task.FromResult(new List<string>())
         };
 
@@ -50,6 +61,7 @@ public class ServerDownloadService
             ServerType.Vanilla => ResolveVanillaAsync(version, ct),
             ServerType.Purpur  => ResolvePurpurAsync(version, ct),
             ServerType.Fabric  => ResolveFabricAsync(version, ct),
+            ServerType.NeoForge => ResolveNeoForgeAsync(version, ct),
             _ => throw new NotSupportedException(
                 $"{type} requires manual installation. Visit the official website to download.")
         };
@@ -128,6 +140,24 @@ public class ServerDownloadService
             .Select(v => v.GetProperty("version").GetString()!)
             .Take(25)
             .ToList();
+    }
+
+    private async Task<List<string>> FetchNeoForgeVersionsAsync(CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, NeoForgeMavenMetadataUrl);
+        req.Headers.UserAgent.ParseAdd(UserAgent);
+        using var r = await _http.SendAsync(req, ct);
+        r.EnsureSuccessStatusCode();
+
+        var doc = XDocument.Parse(await r.Content.ReadAsStringAsync(ct));
+
+        // Maven metadata lists <version> entries in publish order, not sorted — this repo mixes
+        // several concurrently-maintained release lines (e.g. "21.1.248", "26.1.2.94",
+        // "26.2.0.45-beta"), so the tail of the document is newest, not the numeric max.
+        return [.. doc.Descendants("version")
+            .Select(e => e.Value)
+            .Reverse()
+            .Take(25)];
     }
 
     // ── Resolution ──────────────────────────────────────────────────────
@@ -216,5 +246,21 @@ public class ServerDownloadService
         // A ready-to-run server jar — no separate installer step, unlike Forge.
         var url = $"https://meta.fabricmc.net/v2/versions/loader/{version}/{loader}/{installer}/server/jar";
         return (version, url);
+    }
+
+    /// <summary>
+    /// Unlike every other type here, the "download" isn't the finished server — it's
+    /// ServerStarterJar, a fixed URL regardless of version. SetupService runs the actual NeoForge
+    /// installer against it afterward (see NeoForgeInstaller) before reporting completion.
+    /// </summary>
+    private async Task<(string, string)> ResolveNeoForgeAsync(string? version, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(version))
+        {
+            var versions = await FetchNeoForgeVersionsAsync(ct);
+            version = versions[0];
+        }
+
+        return (version, ServerStarterJarUrl);
     }
 }

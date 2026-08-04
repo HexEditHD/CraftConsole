@@ -138,6 +138,58 @@ public class ServerDownloadServiceTests
         Assert.Equal("https://meta.fabricmc.net/v2/versions/loader/1.21.9/0.19.3/1.1.2/server/jar", url);
     }
 
+    // ── NeoForge ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task NeoForge_versions_are_read_newest_first_from_maven_metadata()
+    {
+        const string body = """
+            <metadata>
+              <versioning>
+                <versions>
+                  <version>20.2.12-beta</version>
+                  <version>21.1.240</version>
+                  <version>26.2.0.45-beta</version>
+                </versions>
+              </versioning>
+            </metadata>
+            """;
+        var service = NewService(body);
+
+        var versions = await service.FetchVersionsAsync(ServerType.NeoForge);
+
+        Assert.Equal(["26.2.0.45-beta", "21.1.240", "20.2.12-beta"], versions);
+    }
+
+    [Fact]
+    public async Task NeoForge_resolve_always_points_at_ServerStarterJar_regardless_of_version()
+    {
+        var service = NewService(); // explicit version supplied — no HTTP call expected
+
+        var (version, url) = await service.ResolveVersionAsync(ServerType.NeoForge, "26.2.0.45-beta");
+
+        Assert.Equal("26.2.0.45-beta", version);
+        Assert.Equal(
+            "https://github.com/neoforged/ServerStarterJar/releases/latest/download/server.jar", url);
+    }
+
+    [Fact]
+    public async Task NeoForge_resolve_uses_the_newest_version_when_none_is_specified()
+    {
+        const string body = """
+            <metadata><versioning><versions>
+              <version>21.1.240</version>
+              <version>26.2.0.45-beta</version>
+            </versions></versioning></metadata>
+            """;
+        var service = NewService(body);
+
+        var (version, url) = await service.ResolveVersionAsync(ServerType.NeoForge);
+
+        Assert.Equal("26.2.0.45-beta", version);
+        Assert.EndsWith("server.jar", url);
+    }
+
     // ── Manual types ─────────────────────────────────────────────────────
 
     [Theory]
