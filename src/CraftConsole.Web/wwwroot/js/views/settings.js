@@ -1,5 +1,5 @@
 // Settings: console display preferences and log-level colors.
-import { h, toast, debounce } from '../ui.js';
+import { h, icon, toast, debounce, modal, confirmDialog } from '../ui.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
 
@@ -76,6 +76,112 @@ function tlsCard() {
     }
   })();
 
+  return card;
+}
+
+const ROLES = ['Operator', 'Admin'];
+
+function usersCard() {
+  const body = h('div', {}, h('p', { class: 'muted small' }, 'Loading…'));
+  const card = h('div', { class: 'card' },
+    h('div', { class: 'card-title' },
+      'Users',
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sm primary', onclick: () => openEditor() }, icon('plus'), 'New user')),
+    body);
+
+  async function load() {
+    try { build((await api.get('/api/users')).users ?? []); }
+    catch (err) { body.replaceChildren(h('p', { class: 'muted small' }, err.message)); }
+  }
+
+  function build(users) {
+    body.replaceChildren(h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {},
+        h('th', {}, 'Username'), h('th', {}, 'Role'), h('th', {}, 'Status'), h('th', {}))),
+      h('tbody', {}, users.map(u => h('tr', { style: u.enabled ? null : { opacity: .55 } },
+        h('td', { style: { fontWeight: 600 } }, u.username),
+        h('td', {}, h('select', {
+          class: 'select',
+          onchange: e => {
+            api.put(`/api/users/${u.id}/role`, { role: e.target.value })
+              .then(() => { toast('Role updated'); load(); })
+              .catch(err => { toast(err.message, 'err'); e.target.value = u.role; });
+          },
+        }, ROLES.map(r => h('option', { value: r, selected: u.role === r }, r)))),
+        h('td', {}, u.enabled
+          ? h('span', { class: 'badge accent' }, 'Enabled')
+          : h('span', { class: 'badge warn' }, 'Disabled')),
+        h('td', {}, h('div', { class: 'actions' },
+          h('button', {
+            class: 'btn sm',
+            onclick: () => {
+              api.put(`/api/users/${u.id}/enabled`, { enabled: !u.enabled })
+                .then(load)
+                .catch(err => toast(err.message, 'err'));
+            },
+          }, u.enabled ? 'Disable' : 'Enable'),
+          h('button', { class: 'btn sm', onclick: () => openPasswordReset(u) }, 'Reset password'),
+          h('button', {
+            class: 'btn sm icon-only danger', title: 'Delete',
+            onclick: async () => {
+              if (!await confirmDialog('Delete user', `Delete “${u.username}”?`, { danger: true, okLabel: 'Delete' })) return;
+              api.del(`/api/users/${u.id}`).then(load).catch(err => toast(err.message, 'err'));
+            },
+          }, icon('trash'))))))))));
+  }
+
+  function openEditor() {
+    const username = h('input', { class: 'input', placeholder: 'Username', autocomplete: 'off' });
+    const password = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'Password (min. 8 characters)' });
+    const role = h('select', { class: 'select' }, ROLES.map(r => h('option', { value: r }, r)));
+
+    modal({
+      title: 'New user',
+      body: h('div', {},
+        h('div', { class: 'field' }, h('label', {}, 'Username'), username),
+        h('div', { class: 'field' }, h('label', {}, 'Password'), password),
+        h('div', { class: 'field' }, h('label', {}, 'Role'), role)),
+      actions: [
+        { label: 'Cancel', kind: 'ghost' },
+        {
+          label: 'Create user',
+          kind: 'primary',
+          onClick: () => {
+            if (!username.value.trim()) { toast('A username is required.', 'err'); return false; }
+            if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
+            api.post('/api/users', { username: username.value.trim(), password: password.value, role: role.value })
+              .then(() => { toast('User created'); load(); })
+              .catch(err => toast(err.message, 'err'));
+          },
+        },
+      ],
+    });
+  }
+
+  function openPasswordReset(u) {
+    const password = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'New password (min. 8 characters)' });
+
+    modal({
+      title: `Reset “${u.username}”’s password`,
+      body: h('div', { class: 'field' }, h('label', {}, 'New password'), password),
+      actions: [
+        { label: 'Cancel', kind: 'ghost' },
+        {
+          label: 'Reset password',
+          kind: 'primary',
+          onClick: () => {
+            if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
+            api.put(`/api/users/${u.id}/password`, { newPassword: password.value })
+              .then(() => toast('Password reset'))
+              .catch(err => toast(err.message, 'err'));
+          },
+        },
+      ],
+    });
+  }
+
+  load();
   return card;
 }
 
@@ -215,6 +321,6 @@ export default {
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
     el.append(h('div', { class: 'grid', style: { maxWidth: '660px' } },
-      consoleCard, colorsCard, securityCard(), tlsCard(), aboutCard));
+      consoleCard, colorsCard, securityCard(), usersCard(), tlsCard(), aboutCard));
   },
 };

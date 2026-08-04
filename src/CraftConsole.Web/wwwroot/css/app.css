@@ -132,6 +132,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
 .conn-dot.ok { background: var(--accent); box-shadow: 0 0 6px rgba(52,211,153,.7); }
 .conn-dot.bad { background: var(--danger); }
+.whoami { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
 
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
@@ -668,7 +669,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* ── Responsive squeeze ──────────────────────────────────────────────── */
 @media (max-width: 900px) {
   #sidebar { width: 64px; }
-  .brand-text, .nav-item span.label, .sidebar-foot #conn-label { display: none; }
+  .brand-text, .nav-item span.label, .sidebar-foot #conn-label, .whoami { display: none; }
   .brand { justify-content: center; padding: 14px 8px; }
   .nav-item { justify-content: center; padding: 10px; }
   .console-rail { display: none; }

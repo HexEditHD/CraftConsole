@@ -35,7 +35,8 @@ public sealed class TlsApiTests : IAsyncDisposable
         _client = _factory.CreateClient();
 
         var auth = _factory.Services.GetRequiredService<AuthService>();
-        var token = auth.CreateSession();
+        auth.SetupAdminAsync("test-password-not-real").GetAwaiter().GetResult();
+        var token = auth.CreateSession(auth.ListUsers()[0].Id);
         _client.DefaultRequestHeaders.Add("Cookie", $"{AuthApi.CookieName}={token}");
     }
 
@@ -150,7 +151,9 @@ public sealed class TlsApiTests : IAsyncDisposable
             await using var pinnedFactory = new WebApplicationFactory<Program>();
             using var pinnedClient = pinnedFactory.CreateClient();
             var auth = pinnedFactory.Services.GetRequiredService<AuthService>();
-            pinnedClient.DefaultRequestHeaders.Add("Cookie", $"{AuthApi.CookieName}={auth.CreateSession()}");
+            await auth.SetupAdminAsync("test-password-not-real");
+            var token = auth.CreateSession(auth.ListUsers()[0].Id);
+            pinnedClient.DefaultRequestHeaders.Add("Cookie", $"{AuthApi.CookieName}={token}");
 
             var status = await (await pinnedClient.GetAsync("/api/tls/status")).Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal("pinned", status.GetProperty("source").GetString());

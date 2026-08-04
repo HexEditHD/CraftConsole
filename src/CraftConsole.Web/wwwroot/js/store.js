@@ -6,6 +6,7 @@ export const state = {
   status: null,        // /api/status snapshot
   settings: null,      // AppSettings
   system: null,        // /api/system/info snapshot (platform, path separator, default paths)
+  session: null,       // /api/auth/me snapshot ({username, role})
   metrics: null,       // latest metrics sample
   metricsHistory: [],  // last N samples for sparklines
   players: [],
@@ -13,6 +14,8 @@ export const state = {
   issues: [],
   connected: false,
 };
+
+export const isAdmin = () => state.session?.role === 'Admin';
 
 const HISTORY_LIMIT = 120;
 
@@ -24,10 +27,11 @@ function capConsole() {
 
 export async function initStore() {
   // Hydrate everything in parallel; individual failures shouldn't kill boot.
-  const [status, settings, system, consoleEntries, players, issues, metrics] = await Promise.allSettled([
+  const [status, settings, system, session, consoleEntries, players, issues, metrics] = await Promise.allSettled([
     api.get('/api/status'),
     api.get('/api/settings'),
     api.get('/api/system/info'),
+    api.get('/api/auth/me'),
     api.get('/api/console'),
     api.get('/api/players'),
     api.get('/api/issues'),
@@ -37,6 +41,7 @@ export async function initStore() {
   state.status = status;
   state.settings = settings;
   state.system = system;
+  state.session = session;
   state.consoleEntries = consoleEntries ?? [];
   state.players = players?.players ?? [];
   state.issues = issues?.issues ?? [];

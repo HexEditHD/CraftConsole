@@ -38,20 +38,22 @@ public static class ServerApi
             Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
             Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
             Architecture = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString(),
-        }, Json.Options));
+        }, Json.Options)).RequireRole(Role.Operator);
 
-        app.MapGet("/api/status", (ServerSupervisor sup) => Results.Json(sup.StatusSnapshot(), Json.Options));
+        app.MapGet("/api/status", (ServerSupervisor sup) => Results.Json(sup.StatusSnapshot(), Json.Options))
+            .RequireRole(Role.Operator);
 
         app.MapGet("/api/metrics", (MetricsSampler metrics) =>
-            Results.Json(metrics.Latest ?? new { }, Json.Options));
+            Results.Json(metrics.Latest ?? new { }, Json.Options)).RequireRole(Role.Operator);
 
-        app.MapGet("/api/console", (ServerSupervisor sup) => Results.Json(sup.ConsoleSnapshot(), Json.Options));
+        app.MapGet("/api/console", (ServerSupervisor sup) => Results.Json(sup.ConsoleSnapshot(), Json.Options))
+            .RequireRole(Role.Operator);
 
         app.MapDelete("/api/console", (ServerSupervisor sup) =>
         {
             sup.ClearConsole();
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/server/start", async (StartRequest? req, ServerSupervisor sup, ProfilesService profiles) =>
         {
@@ -74,13 +76,13 @@ public static class ServerApi
             {
                 return Results.BadRequest(new { ex.Message });
             }
-        });
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/server/stop", async (ServerSupervisor sup) =>
         {
             await sup.StopAsync();
             return Results.Ok(sup.StatusSnapshot());
-        });
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/server/restart", async (ServerSupervisor sup) =>
         {
@@ -93,13 +95,13 @@ public static class ServerApi
             {
                 return Results.BadRequest(new { ex.Message });
             }
-        });
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/server/command", async (CommandRequest req, ServerSupervisor sup) =>
         {
             await sup.SendCommandAsync(req.Command);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/server/eula/accept", async (ServerSupervisor sup) =>
         {
@@ -112,7 +114,7 @@ public static class ServerApi
             {
                 return Results.BadRequest(new { ex.Message });
             }
-        });
+        }).RequireRole(Role.Operator);
 
         // ── Live event stream (SSE) ──────────────────────────────────────
         app.MapGet("/api/events", async (HttpContext ctx, EventBroker broker, ServerSupervisor sup) =>
@@ -142,7 +144,7 @@ public static class ServerApi
                 }
             }
             catch (OperationCanceledException) { /* client disconnected */ }
-        });
+        }).RequireRole(Role.Operator);
     }
 
     public record SimulateRequest(string[] Lines);
@@ -155,6 +157,6 @@ public static class ServerApi
             foreach (var line in req.Lines)
                 sup.SimulateOutput(line);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
     }
 }
