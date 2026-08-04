@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using CraftConsole.Infrastructure.Config;
 using CraftConsole.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -51,6 +52,27 @@ public class TlsCertificateProviderTests : IDisposable
         var path = Path.Combine(dir, fileName);
         await File.WriteAllBytesAsync(path, cert.Export(X509ContentType.Pkcs12));
         return path;
+    }
+
+    /// <summary>
+    /// Writes tls-cert.json directly, protected under the same key-ring folder and Data
+    /// Protection purpose string a real TlsCertificateProvider uses — so a provider constructed
+    /// against that same folder can load it via the normal LoadOrGenerateAsync path, with full
+    /// control over the stored certificate's Source and validity window.
+    /// </summary>
+    private async Task SeedStoredCertAsync(
+        string keyRingFolder, string source, DateTimeOffset notBefore, DateTimeOffset notAfter)
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=seeded", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = request.CreateSelfSigned(notBefore, notAfter);
+        var pfxBytes = cert.Export(X509ContentType.Pkcs12);
+
+        var protector = DataProtectionProvider
+            .Create(new DirectoryInfo(Path.Combine(_dir, keyRingFolder)))
+            .CreateProtector("CraftConsole.TlsCertificateStore.v1");
+        var store = new JsonFileStore<StoredTlsCertificate>(_dir, "tls-cert.json");
+        await store.SaveAsync(new StoredTlsCertificate(protector.Protect(Convert.ToBase64String(pfxBytes)), source));
     }
 
     [Fact]
@@ -156,6 +178,45 @@ public class TlsCertificateProviderTests : IDisposable
 
         Assert.Equal(thumbprint, second.Current.Thumbprint);
         Assert.Equal("uploaded", second.Source);
+    }
+
+    [Fact]
+    public async Task An_uploaded_certificate_nearing_expiry_is_kept_rather_than_replaced()
+    {
+        var notAfter = DateTimeOffset.UtcNow.AddDays(10); // inside the 30-day self-signed refresh window
+        await SeedStoredCertAsync("dpkeys", "uploaded", DateTimeOffset.UtcNow.AddDays(-300), notAfter);
+
+        var provider = NewProvider();
+        await provider.InitializeAsync();
+
+        Assert.Equal("uploaded", provider.Source);
+        Assert.Equal(notAfter.UtcDateTime, provider.Current.NotAfter.ToUniversalTime(), TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task An_uploaded_certificate_that_has_actually_expired_falls_back_to_self_signed()
+    {
+        await SeedStoredCertAsync("dpkeys", "uploaded",
+            DateTimeOffset.UtcNow.AddDays(-400), DateTimeOffset.UtcNow.AddDays(-10));
+
+        var provider = NewProvider();
+        await provider.InitializeAsync();
+
+        Assert.Equal("self-signed", provider.Source);
+        Assert.True(provider.Current.NotAfter > DateTime.UtcNow.AddYears(4));
+    }
+
+    [Fact]
+    public async Task A_self_signed_certificate_nearing_expiry_still_regenerates_proactively()
+    {
+        await SeedStoredCertAsync("dpkeys", "self-signed",
+            DateTimeOffset.UtcNow.AddDays(-300), DateTimeOffset.UtcNow.AddDays(10));
+
+        var provider = NewProvider();
+        await provider.InitializeAsync();
+
+        Assert.Equal("self-signed", provider.Source);
+        Assert.True(provider.Current.NotAfter > DateTime.UtcNow.AddYears(4));
     }
 
     [Fact]
