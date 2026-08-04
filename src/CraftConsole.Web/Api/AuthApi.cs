@@ -8,7 +8,7 @@ public static class AuthApi
     public const string CookieName = "cc_session";
 
     public record SetupRequest(string Password);
-    public record LoginRequest(string Password);
+    public record LoginRequest(string Username, string Password);
     public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
     public static void MapAuthApi(this IEndpointRouteBuilder app)
@@ -31,8 +31,9 @@ public static class AuthApi
             if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
                 return Results.BadRequest(new { Message = "Password must be at least 8 characters." });
 
-            await auth.SetPasswordAsync(req.Password);
-            IssueSessionCookie(ctx, auth);
+            await auth.SetupAdminAsync(req.Password);
+            var admin = auth.ListUsers()[0];
+            IssueSessionCookie(ctx, auth, admin.Id);
             return Results.NoContent();
         });
 
@@ -44,14 +45,15 @@ public static class AuthApi
                     new { Message = "Too many attempts. Try again in a few minutes." },
                     statusCode: StatusCodes.Status429TooManyRequests);
 
-            if (!auth.IsConfigured || !auth.VerifyPassword(req.Password ?? ""))
+            var user = auth.VerifyCredentials(req.Username ?? "", req.Password ?? "");
+            if (user is null)
             {
                 auth.RegisterFailure(ip);
-                return Results.Json(new { Message = "Incorrect password." }, statusCode: StatusCodes.Status401Unauthorized);
+                return Results.Json(new { Message = "Incorrect username or password." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
             auth.ClearFailures(ip);
-            IssueSessionCookie(ctx, auth);
+            IssueSessionCookie(ctx, auth, user.Id);
             return Results.NoContent();
         });
 
@@ -60,25 +62,32 @@ public static class AuthApi
             auth.RevokeSession(ctx.Request.Cookies[CookieName]);
             ctx.Response.Cookies.Delete(CookieName);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Operator);
+
+        app.MapGet("/api/auth/me", (HttpContext ctx) =>
+        {
+            var session = ctx.GetSession()!; // gate guarantees a session for a role-annotated endpoint
+            return Results.Json(new { session.Username, Role = session.Role.ToString() }, Json.Options);
+        }).RequireRole(Role.Operator);
 
         app.MapPost("/api/auth/change-password", async (ChangePasswordRequest req, AuthService auth, HttpContext ctx) =>
         {
-            if (!auth.VerifyPassword(req.CurrentPassword ?? ""))
+            var session = ctx.GetSession()!;
+            if (auth.VerifyCredentials(session.Username, req.CurrentPassword ?? "") is null)
                 return Results.BadRequest(new { Message = "Current password is incorrect." });
             if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 8)
                 return Results.BadRequest(new { Message = "New password must be at least 8 characters." });
 
-            await auth.SetPasswordAsync(req.NewPassword);
-            auth.RevokeAllSessions(); // force re-login everywhere, including this tab, on the fresh cookie below
-            IssueSessionCookie(ctx, auth);
+            await auth.SetPasswordAsync(session.UserId, req.NewPassword);
+            auth.RevokeAllSessionsForUser(session.UserId); // force re-login everywhere, including this tab, on the fresh cookie below
+            IssueSessionCookie(ctx, auth, session.UserId);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Operator);
     }
 
-    private static void IssueSessionCookie(HttpContext ctx, AuthService auth)
+    private static void IssueSessionCookie(HttpContext ctx, AuthService auth, Guid userId)
     {
-        var token = auth.CreateSession();
+        var token = auth.CreateSession(userId);
         ctx.Response.Cookies.Append(CookieName, token, new CookieOptions
         {
             HttpOnly = true,

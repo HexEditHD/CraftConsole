@@ -32,10 +32,27 @@ public class JsonFileStore<T> where T : class
         }
     }
 
+    /// <summary>
+    /// Writes to a temp file in the same directory, then atomically replaces the
+    /// real one — a crash or power loss mid-write leaves either the old file or
+    /// the new one intact, never a truncated half-written file.
+    /// </summary>
     public async Task SaveAsync(T value)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
-        await using var stream = File.Create(_filePath);
-        await JsonSerializer.SerializeAsync(stream, value, JsonOptions);
+        var directory = Path.GetDirectoryName(_filePath)!;
+        Directory.CreateDirectory(directory);
+
+        var tempPath = Path.Combine(directory, $".{Path.GetFileName(_filePath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using (var stream = File.Create(tempPath))
+                await JsonSerializer.SerializeAsync(stream, value, JsonOptions);
+
+            File.Move(tempPath, _filePath, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(tempPath); } catch { /* already moved, or never created */ }
+        }
     }
 }

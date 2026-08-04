@@ -37,29 +37,30 @@ public static class SetupApi
                 });
             }
             return Results.Json(new { Profiles = withFlags, ActiveProfileId = settings.Current.ActiveProfileId }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPost("/api/profiles", async (ServerProfile profile, ProfilesService profiles) =>
         {
             try { return Results.Json(await profiles.AddAsync(profile), Json.Options); }
             catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPut("/api/profiles/{id:guid}", async (Guid id, ServerProfile profile, ProfilesService profiles) =>
         {
             try { return await profiles.UpdateAsync(id, profile) ? Results.NoContent() : Results.NotFound(); }
             catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles) =>
-            await profiles.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
+            await profiles.DeleteAsync(id) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
 
         app.MapPost("/api/profiles/{id:guid}/activate", async (Guid id, ProfilesService profiles) =>
         {
             if (await profiles.GetAsync(id) is null) return Results.NotFound();
             await profiles.SetActiveAsync(id);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
 
         // Write-only: sets or replaces the password, never returns it. GET
         // /api/profiles exposes only whether one is set (HasRconPassword above).
@@ -74,7 +75,7 @@ public static class SetupApi
 
             await secrets.SetAsync(id, req.Password);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
 
         // ── Java ──────────────────────────────────────────────────────────
         app.MapGet("/api/setup/java/detect", async (CancellationToken ct) =>
@@ -84,19 +85,21 @@ public static class SetupApi
                 .OrderByDescending(j => j.MajorVersion)
                 .Select(j => new { j.ExecutablePath, j.DisplayVersion, j.MajorVersion, j.Label }),
                 Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapGet("/api/setup/java/versions", async (SetupService setup, CancellationToken ct) =>
-            Results.Json(new { Versions = await setup.FetchJavaVersionsAsync(ct) }, Json.Options));
+            Results.Json(new { Versions = await setup.FetchJavaVersionsAsync(ct) }, Json.Options))
+            .RequireRole(Role.Admin);
 
         app.MapPost("/api/setup/java/download", (JavaDownloadRequest req, SetupService setup) =>
             setup.StartJavaDownload(req.Major)
                 ? Results.Accepted()
-                : Results.Conflict(new { Message = "A Java download is already in progress." }));
+                : Results.Conflict(new { Message = "A Java download is already in progress." }))
+            .RequireRole(Role.Admin);
 
         // ── Server JARs ───────────────────────────────────────────────────
         app.MapGet("/api/setup/server/types", () =>
-            Results.Json(SetupService.AllServerTypes, Json.Options));
+            Results.Json(SetupService.AllServerTypes, Json.Options)).RequireRole(Role.Admin);
 
         app.MapGet("/api/setup/server/versions", async (ServerType type, SetupService setup, ILogger<SetupService> log, CancellationToken ct) =>
         {
@@ -107,7 +110,7 @@ public static class SetupApi
                 return Results.Json(new { Message = $"Could not fetch versions from the {type} API: {ex.Message}" },
                     Json.Options, statusCode: StatusCodes.Status502BadGateway);
             }
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPost("/api/setup/server/download", (ServerDownloadRequest req, SetupService setup) =>
         {
@@ -117,17 +120,17 @@ public static class SetupApi
             return setup.StartServerDownload(req.Type, req.Version, req.Directory)
                 ? Results.Accepted()
                 : Results.Conflict(new { Message = "A server download is already in progress." });
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPost("/api/setup/cancel/{kind}", (string kind, SetupService setup) =>
         {
             setup.Cancel(kind);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
 
         // ── Settings ──────────────────────────────────────────────────────
         app.MapGet("/api/settings", (SettingsHolder settings) =>
-            Results.Json(settings.Current, Json.Options));
+            Results.Json(settings.Current, Json.Options)).RequireRole(Role.Admin);
 
         app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings) =>
         {
@@ -143,6 +146,6 @@ public static class SetupApi
                 s.ColorPlayer = dto.ColorPlayer;
             });
             return Results.Json(settings.Current, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
     }
 }

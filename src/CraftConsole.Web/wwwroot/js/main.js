@@ -2,7 +2,7 @@
 import { h, icon, toast } from './ui.js';
 import { api } from './api.js';
 import { connectSse, on } from './bus.js';
-import { state, initStore } from './store.js';
+import { state, initStore, isAdmin } from './store.js';
 import { createServerControls } from './components/server-controls.js';
 
 import dashboard from './views/dashboard.js';
@@ -18,13 +18,21 @@ import settings from './views/settings.js';
 
 const ROUTES = [dashboard, consoleView, players, issues, server, plugins, editor, backups, scheduler, settings];
 
+// These views are entirely gated on Admin-only endpoints server-side — every
+// action on them would 403 for an Operator, so there's nothing useful to show.
+const ADMIN_ONLY_VIEWS = new Set(['server', 'plugins', 'editor', 'scheduler', 'settings']);
+
 let activeCleanup = null;
 let issueBadge = null;
 
 // ── Navigation ──────────────────────────────────────────────────────────
 function buildNav() {
   const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  const admin = isAdmin();
   for (const route of ROUTES) {
+    if (ADMIN_ONLY_VIEWS.has(route.id) && !admin) continue;
+
     const item = h('button', {
       class: 'nav-item',
       id: `nav-${route.id}`,
@@ -51,7 +59,13 @@ function updateIssueBadge() {
 // ── Router ──────────────────────────────────────────────────────────────
 function route() {
   const id = location.hash.replace(/^#\//, '') || 'dashboard';
-  const view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+  let view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+
+  if (ADMIN_ONLY_VIEWS.has(view.id) && !isAdmin()) {
+    toast('That page needs an admin account.', 'err');
+    location.hash = '#/dashboard';
+    view = dashboard;
+  }
 
   activeCleanup?.();
   activeCleanup = null;
@@ -137,10 +151,19 @@ function syncConn() {
 
 // ── Logout ──────────────────────────────────────────────────────────────
 function buildLogout() {
-  document.querySelector('.sidebar-foot').append(
+  const foot = document.querySelector('.sidebar-foot');
+
+  if (state.session) {
+    foot.append(h('span', {
+      class: 'whoami', style: { marginLeft: 'auto' },
+      title: `Signed in as ${state.session.username} (${state.session.role})`,
+    }, `${state.session.username} · ${state.session.role}`));
+  }
+
+  foot.append(
     h('button', {
       class: 'btn ghost sm icon-only', title: 'Sign out',
-      style: { marginLeft: 'auto' },
+      style: { marginLeft: state.session ? '' : 'auto' },
       onclick: async () => {
         try { await api.post('/api/auth/logout'); } catch { /* clearing the cookie server-side is best-effort */ }
         location.reload();
@@ -150,8 +173,8 @@ function buildLogout() {
 
 // ── Boot ────────────────────────────────────────────────────────────────
 (async function boot() {
-  buildNav();
   await initStore();
+  buildNav();
   buildTopbar();
   buildLogout();
   updateIssueBadge();

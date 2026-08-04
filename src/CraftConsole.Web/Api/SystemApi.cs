@@ -18,6 +18,6 @@ public static class SystemApi
                 DefaultServerRoot = PlatformPaths.DefaultServerRoot(),
                 DefaultBackupRoot = PlatformPaths.DefaultBackupRoot(),
             }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
     }
 }

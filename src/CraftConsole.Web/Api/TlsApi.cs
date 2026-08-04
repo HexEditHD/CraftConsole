@@ -19,7 +19,7 @@ public static class TlsApi
                 Thumbprint = cert.Thumbprint,
                 Subject = cert.Subject,
             }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPost("/api/tls/certificate", async (HttpRequest request, TlsCertificateProvider tls) =>
         {
@@ -58,7 +58,7 @@ public static class TlsApi
                     statusCode: StatusCodes.Status409Conflict),
                 _ => Results.Problem(),
             };
-        });
+        }).RequireRole(Role.Admin);
     }
 
     private static async Task<string> ReadAsStringAsync(IFormFile file)

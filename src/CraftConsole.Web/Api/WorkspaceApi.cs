@@ -21,13 +21,13 @@ public static class WorkspaceApi
     {
         // ── Issues ────────────────────────────────────────────────────────
         app.MapGet("/api/issues", (ServerSupervisor sup) =>
-            Results.Json(new { Issues = sup.IssuesSnapshot() }, Json.Options));
+            Results.Json(new { Issues = sup.IssuesSnapshot() }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapDelete("/api/issues", (ServerSupervisor sup) =>
         {
             sup.ClearIssues();
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Operator);
 
         // ── Plugins ───────────────────────────────────────────────────────
         app.MapGet("/api/plugins", (ServerSupervisor sup) =>
@@ -45,7 +45,7 @@ public static class WorkspaceApi
                 .ToList();
 
             return Results.Json(new { Available = true, Reason = (string?)null, Folder = folder, Plugins = plugins }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPost("/api/plugins/{fileName}/disable", (string fileName, ServerSupervisor sup) =>
         {
@@ -65,7 +65,7 @@ public static class WorkspaceApi
             Directory.CreateDirectory(disabledDir);
             File.Move(source, Path.Combine(disabledDir, fileName), overwrite: true);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
 
         // ── File editor ───────────────────────────────────────────────────
         app.MapGet("/api/files/tree", (ServerSupervisor sup) =>
@@ -79,7 +79,7 @@ public static class WorkspaceApi
 
             var node = BuildNode(root, root);
             return Results.Json(new { Available = true, Reason = (string?)null, Root = root, Nodes = node?.Children ?? [] }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapGet("/api/files/content", (string path, ServerSupervisor sup) =>
         {
@@ -94,7 +94,7 @@ public static class WorkspaceApi
                 return Results.BadRequest(new { Message = "File is too large to edit (2 MB limit)." });
 
             return Results.Json(new { Path = path, Content = File.ReadAllText(fullPath) }, Json.Options);
-        });
+        }).RequireRole(Role.Admin);
 
         app.MapPut("/api/files/content", async (FileContentRequest req, ServerSupervisor sup) =>
         {
@@ -108,7 +108,7 @@ public static class WorkspaceApi
 
             await File.WriteAllTextAsync(fullPath, req.Content);
             return Results.NoContent();
-        });
+        }).RequireRole(Role.Admin);
     }
 
     private static string? PluginsFolder(ServerSupervisor sup)

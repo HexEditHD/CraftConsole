@@ -81,9 +81,20 @@ dotnet run --project src/CraftConsole.Web
 
 ## First run
 
-You will be asked to set a password before anything else is reachable. It is hashed with
-PBKDF2-SHA256 and stored on the machine only — **there is no recovery**. To reset it,
-delete `auth.json` from the data directory and restart.
+You will be asked to set a password before anything else is reachable. It creates a single
+`admin` account, hashed with PBKDF2-SHA256 and stored on the machine only — **there is no
+recovery**. To reset it, delete `auth.json` from the data directory and restart.
+
+Additional accounts can be added under **Settings → Users**, each with one of two roles:
+
+| Role | Can do |
+|---|---|
+| **Admin** | Everything — profiles, downloads, settings, TLS, backup/task management, other users |
+| **Operator** | Day-to-day operation — console, players, moderation, start/stop/restart, run existing backups |
+
+At least one enabled Admin always exists; the panel refuses to delete, disable, or demote the
+last one. Upgrading from a version before roles existed converts the existing password into that
+first Admin account automatically — same password, username `admin`.
 
 Then open **Server** to create a profile: point it at a server JAR (or download one — Vanilla,
 Paper and Purpur can be fetched directly), pick a Java runtime (or get one — Windows installs it

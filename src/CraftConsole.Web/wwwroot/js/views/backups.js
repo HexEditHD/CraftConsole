@@ -2,7 +2,7 @@
 import { h, icon, toast, confirmDialog, modal, timeAgo, fmtSize } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
-import { state } from '../store.js';
+import { state, isAdmin } from '../store.js';
 import { joinPath } from '../platform.js';
 
 export default {
@@ -19,7 +19,7 @@ export default {
       h('div', { class: 'view-head' },
         h('span', { class: 'sub' }, 'Each run creates a timestamped .zip of the job’s sources.'),
         h('span', { class: 'spacer' }),
-        h('button', { class: 'btn sm primary', onclick: () => openEditor(null) }, icon('plus'), 'New backup job')),
+        isAdmin() ? h('button', { class: 'btn sm primary', onclick: () => openEditor(null) }, icon('plus'), 'New backup job') : null),
       list);
 
     async function load() {
@@ -40,13 +40,16 @@ export default {
       for (const job of jobs) {
         const isRunning = running.has(job.id);
         const enabled = job.isEnabled ?? true;
+        const admin = isAdmin();
         list.append(h('div', { class: 'card profile-card', style: enabled ? null : { opacity: .55 } },
-          h('label', { class: 'switch', title: enabled ? 'Enabled' : 'Disabled' },
-            h('input', {
-              type: 'checkbox', checked: enabled,
-              onchange: e => toggle(job, e.target.checked),
-            }),
-            h('span', { class: 'track' })),
+          admin
+            ? h('label', { class: 'switch', title: enabled ? 'Enabled' : 'Disabled' },
+                h('input', {
+                  type: 'checkbox', checked: enabled,
+                  onchange: e => toggle(job, e.target.checked),
+                }),
+                h('span', { class: 'track' }))
+            : null,
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               job.name,
@@ -62,19 +65,19 @@ export default {
               title: enabled ? '' : 'This job is disabled — enable it first.',
               onclick: () => run(job),
             }, isRunning ? h('span', { class: 'spinner' }) : icon('play'), isRunning ? 'Running…' : 'Run now'),
-            h('button', {
+            admin ? h('button', {
               class: 'btn sm', title: 'Restore an archive from this job',
               onclick: () => openRestore(job),
-            }, icon('archive'), 'Restore'),
-            h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')),
-            h('button', {
+            }, icon('archive'), 'Restore') : null,
+            admin ? h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')) : null,
+            admin ? h('button', {
               class: 'btn sm icon-only danger', title: 'Delete',
               onclick: async () => {
                 if (!await confirmDialog('Delete backup job', `Delete “${job.name}”? Existing archives are kept.`, { danger: true, okLabel: 'Delete' })) return;
                 await api.del(`/api/backups/${job.id}`);
                 load();
               },
-            }, icon('trash')))));
+            }, icon('trash')) : null)));
       }
     }
 
