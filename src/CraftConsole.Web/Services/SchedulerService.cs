@@ -12,6 +12,7 @@ namespace CraftConsole.Web.Services;
 public sealed class SchedulerService : BackgroundService
 {
     private readonly ServerSupervisor _supervisor;
+    private readonly BackupService _backups;
     private readonly EventBroker _broker;
     private readonly ILogger<SchedulerService> _log;
     private readonly JsonFileStore<List<ScheduledTask>> _store;
@@ -29,10 +30,11 @@ public sealed class SchedulerService : BackgroundService
     internal static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
     public SchedulerService(
-        ServerSupervisor supervisor, EventBroker broker, SettingsHolder settings,
+        ServerSupervisor supervisor, BackupService backups, EventBroker broker, SettingsHolder settings,
         ILogger<SchedulerService> log, TimeProvider? timeProvider = null)
     {
         _supervisor = supervisor;
+        _backups = backups;
         _broker = broker;
         _log = log;
         _time = timeProvider ?? TimeProvider.System;
@@ -69,6 +71,19 @@ public sealed class SchedulerService : BackgroundService
             task.ActionType = updated.ActionType;
             task.ActionValue = updated.ActionValue;
             task.IsEnabled = updated.IsEnabled;
+            ScheduleNextDue(task);
+        }
+        await SaveAndPublishAsync();
+        return true;
+    }
+
+    public async Task<bool> SetEnabledAsync(Guid id, bool enabled)
+    {
+        lock (_lock)
+        {
+            var task = _tasks.FirstOrDefault(t => t.Id == id);
+            if (task is null) return false;
+            task.IsEnabled = enabled;
             ScheduleNextDue(task);
         }
         await SaveAndPublishAsync();
@@ -204,6 +219,12 @@ public sealed class SchedulerService : BackgroundService
                     break;
                 case TaskActionType.RestartServer:
                     await _supervisor.RestartAsync();
+                    break;
+                case TaskActionType.RunBackup:
+                    if (!Guid.TryParse(task.ActionValue, out var jobId))
+                        throw new InvalidOperationException("No backup job is configured for this task.");
+                    if (!await _backups.RunAsync(jobId))
+                        throw new InvalidOperationException("The configured backup job no longer exists.");
                     break;
             }
             _broker.Publish("task-ran", new { task.Id, task.Name, At = DateTimeOffset.UtcNow });

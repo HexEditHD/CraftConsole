@@ -126,8 +126,22 @@ app.Use(async (ctx, next) =>
     }
 
     var auth = ctx.RequestServices.GetRequiredService<AuthService>();
-    if (auth.TryValidateSession(ctx.Request.Cookies[AuthApi.CookieName]))
+    var session = auth.TryValidateSession(ctx.Request.Cookies[AuthApi.CookieName]);
+    if (session is not null)
     {
+        ctx.Items[HttpContextAuthExtensions.SessionInfoKey] = session;
+
+        // Routing has already matched an endpoint by this point in the pipeline
+        // even though this middleware is registered before the Map*Api() calls —
+        // WebApplication auto-inserts routing at the true start of the pipeline.
+        var required = ctx.GetEndpoint()?.Metadata.GetMetadata<RequiredRole>();
+        if (required is not null && session.Role < required.Role)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await ctx.Response.WriteAsJsonAsync(new { Message = "Your role does not allow this." });
+            return;
+        }
+
         await next();
         return;
     }
@@ -174,6 +188,8 @@ app.MapPlayersApi();
 app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
+app.MapSystemApi();
+app.MapUsersApi();
 
 if (httpsEnabled)
     app.MapTlsApi();

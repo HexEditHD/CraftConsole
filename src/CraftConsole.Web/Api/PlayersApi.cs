@@ -12,36 +12,36 @@ public static class PlayersApi
     public static void MapPlayersApi(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/players", (ServerSupervisor sup) =>
-            Results.Json(new { Players = sup.PlayersSnapshot() }, Json.Options));
+            Results.Json(new { Players = sup.PlayersSnapshot() }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapGet("/api/players/banned", (ServerSupervisor sup) => Results.Json(new
         {
             Available = sup.LocalFileUnavailableReason is null,
             Reason = sup.LocalFileUnavailableReason,
             Entries = ReadServerJson<BannedPlayerEntry>(sup, "banned-players.json"),
-        }, Json.Options));
+        }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapGet("/api/players/banned-ips", (ServerSupervisor sup) => Results.Json(new
         {
             Available = sup.LocalFileUnavailableReason is null,
             Reason = sup.LocalFileUnavailableReason,
             Entries = ReadServerJson<BannedIpEntry>(sup, "banned-ips.json"),
-        }, Json.Options));
+        }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/kick", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunPlayerCommand(sup, "kick", req.Target, req.Reason));
+            => RunPlayerCommand(sup, "kick", req.Target, req.Reason)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/ban", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunPlayerCommand(sup, "ban", req.Target, req.Reason));
+            => RunPlayerCommand(sup, "ban", req.Target, req.Reason)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/ban-ip", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunPlayerCommand(sup, "ban-ip", req.Target, req.Reason));
+            => RunPlayerCommand(sup, "ban-ip", req.Target, req.Reason)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/pardon", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunPlayerCommand(sup, "pardon", req.Target, null));
+            => RunPlayerCommand(sup, "pardon", req.Target, null)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/pardon-ip", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunPlayerCommand(sup, "pardon-ip", req.Target, null));
+            => RunPlayerCommand(sup, "pardon-ip", req.Target, null)).RequireRole(Role.Operator);
 
         // ── Whitelist ─────────────────────────────────────────────────────
         // Only the LIST is gated on local file access — add/remove/on/off/reload
@@ -53,22 +53,22 @@ public static class PlayersApi
             Entries = ReadServerJson<WhitelistEntry>(sup, "whitelist.json"),
             // white-list is the historical spelling and is still what the file uses.
             Enabled = ReadServerProperty(sup, "white-list") == "true",
-        }, Json.Options));
+        }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/whitelist/add", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunWhitelistCommand(sup, $"whitelist add {req.Target}", req.Target));
+            => RunWhitelistCommand(sup, $"whitelist add {req.Target}", req.Target)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/whitelist/remove", (PlayerActionRequest req, ServerSupervisor sup)
-            => RunWhitelistCommand(sup, $"whitelist remove {req.Target}", req.Target));
+            => RunWhitelistCommand(sup, $"whitelist remove {req.Target}", req.Target)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/whitelist/on", (ServerSupervisor sup)
-            => RunWhitelistCommand(sup, "whitelist on", null));
+            => RunWhitelistCommand(sup, "whitelist on", null)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/whitelist/off", (ServerSupervisor sup)
-            => RunWhitelistCommand(sup, "whitelist off", null));
+            => RunWhitelistCommand(sup, "whitelist off", null)).RequireRole(Role.Operator);
 
         app.MapPost("/api/players/whitelist/reload", (ServerSupervisor sup)
-            => RunWhitelistCommand(sup, "whitelist reload", null));
+            => RunWhitelistCommand(sup, "whitelist reload", null)).RequireRole(Role.Operator);
     }
 
     private static async Task<IResult> RunWhitelistCommand(

@@ -7,30 +7,45 @@ namespace CraftConsole.Web.Api;
 public static class AutomationApi
 {
     public record RestoreRequest(string Archive, string TargetDirectory);
+    public record SetEnabledRequest(bool Enabled);
 
     public static void MapAutomationApi(this IEndpointRouteBuilder app)
     {
         // ── Backups ───────────────────────────────────────────────────────
         app.MapGet("/api/backups", async (BackupService backups) =>
-            Results.Json(new { Jobs = await backups.SnapshotAsync() }, Json.Options));
+            Results.Json(new { Jobs = await backups.SnapshotAsync() }, Json.Options)).RequireRole(Role.Operator);
 
         app.MapPost("/api/backups", async (BackupJob job, BackupService backups) =>
-            Results.Json(await backups.AddAsync(job), Json.Options));
+            Results.Json(await backups.AddAsync(job), Json.Options)).RequireRole(Role.Admin);
 
         app.MapPut("/api/backups/{id:guid}", async (Guid id, BackupJob job, BackupService backups) =>
-            await backups.UpdateAsync(id, job) ? Results.NoContent() : Results.NotFound());
+            await backups.UpdateAsync(id, job) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
 
         app.MapDelete("/api/backups/{id:guid}", async (Guid id, BackupService backups) =>
-            await backups.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
+            await backups.DeleteAsync(id) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
 
         app.MapPost("/api/backups/{id:guid}/run", async (Guid id, BackupService backups) =>
-            await backups.RunAsync(id) ? Results.Accepted() : Results.NotFound());
+        {
+            try
+            {
+                return await backups.RunAsync(id) ? Results.Accepted() : Results.NotFound();
+            }
+            catch (BackupService.BackupDisabledException ex)
+            {
+                return Results.BadRequest(new { ex.Message });
+            }
+        }).RequireRole(Role.Operator);
 
         app.MapGet("/api/backups/{id:guid}/archives", async (Guid id, BackupService backups) =>
             await backups.ListArchivesAsync(id) is { } archives
                 ? Results.Json(new { Archives = archives }, Json.Options)
-                : Results.NotFound());
+                : Results.NotFound())
+            .RequireRole(Role.Operator);
 
+        // Admin-only: TargetDirectory is client-supplied and only Path.GetFullPath'd,
+        // so this endpoint is effectively an arbitrary host write for whoever can call it.
         app.MapPost("/api/backups/{id:guid}/restore",
             async (Guid id, RestoreRequest req, BackupService backups, ServerSupervisor sup) =>
         {
@@ -51,22 +66,29 @@ public static class AutomationApi
             {
                 return Results.BadRequest(new { ex.Message });
             }
-        });
+        }).RequireRole(Role.Admin);
 
         // ── Scheduled tasks ───────────────────────────────────────────────
         app.MapGet("/api/tasks", (SchedulerService scheduler) =>
-            Results.Json(new { Tasks = scheduler.Snapshot() }, Json.Options));
+            Results.Json(new { Tasks = scheduler.Snapshot() }, Json.Options)).RequireRole(Role.Admin);
 
         app.MapPost("/api/tasks", async (ScheduledTask task, SchedulerService scheduler) =>
-            Results.Json(await scheduler.AddAsync(task), Json.Options));
+            Results.Json(await scheduler.AddAsync(task), Json.Options)).RequireRole(Role.Admin);
 
         app.MapPut("/api/tasks/{id:guid}", async (Guid id, ScheduledTask task, SchedulerService scheduler) =>
-            await scheduler.UpdateAsync(id, task) ? Results.NoContent() : Results.NotFound());
+            await scheduler.UpdateAsync(id, task) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
+
+        app.MapPost("/api/tasks/{id:guid}/enabled", async (Guid id, SetEnabledRequest req, SchedulerService scheduler) =>
+            await scheduler.SetEnabledAsync(id, req.Enabled) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
 
         app.MapDelete("/api/tasks/{id:guid}", async (Guid id, SchedulerService scheduler) =>
-            await scheduler.DeleteAsync(id) ? Results.NoContent() : Results.NotFound());
+            await scheduler.DeleteAsync(id) ? Results.NoContent() : Results.NotFound())
+            .RequireRole(Role.Admin);
 
         app.MapPost("/api/tasks/{id:guid}/run", async (Guid id, SchedulerService scheduler) =>
-            await scheduler.RunNowAsync(id) ? Results.Accepted() : Results.NotFound());
+            await scheduler.RunNowAsync(id) ? Results.Accepted() : Results.NotFound())
+            .RequireRole(Role.Admin);
     }
 }

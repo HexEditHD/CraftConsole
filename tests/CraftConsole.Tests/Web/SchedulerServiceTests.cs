@@ -14,6 +14,7 @@ public class SchedulerServiceTests : IDisposable
     private readonly EventBroker _broker = new();
     private readonly FakeTimeProvider _time = new();
     private readonly ServerSupervisor _supervisor;
+    private readonly BackupService _backups;
     private readonly SchedulerService _scheduler;
 
     public SchedulerServiceTests()
@@ -29,8 +30,9 @@ public class SchedulerServiceTests : IDisposable
             NullLogger<RconSecretStore>.Instance);
         _supervisor = new ServerSupervisor(
             _broker, settings, new HttpClient(), NullLogger<ServerSupervisor>.Instance, secrets);
+        _backups = new BackupService(_broker, settings, NullLogger<BackupService>.Instance);
         _scheduler = new SchedulerService(
-            _supervisor, _broker, settings, NullLogger<SchedulerService>.Instance, _time);
+            _supervisor, _backups, _broker, settings, NullLogger<SchedulerService>.Instance, _time);
     }
 
     public void Dispose()
@@ -113,7 +115,7 @@ public class SchedulerServiceTests : IDisposable
         var task = await _scheduler.AddAsync(IntervalTask());
 
         var reloaded = new SchedulerService(
-            _supervisor, _broker, new SettingsHolder(_dir),
+            _supervisor, _backups, _broker, new SettingsHolder(_dir),
             NullLogger<SchedulerService>.Instance, _time);
         await reloaded.LoadAsync();
 
@@ -144,6 +146,23 @@ public class SchedulerServiceTests : IDisposable
         Assert.False(await _scheduler.UpdateAsync(Guid.NewGuid(), IntervalTask()));
         Assert.False(await _scheduler.DeleteAsync(Guid.NewGuid()));
         Assert.False(await _scheduler.RunNowAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task SetEnabled_flips_the_flag_without_touching_other_fields()
+    {
+        var task = await _scheduler.AddAsync(IntervalTask());
+
+        Assert.True(await _scheduler.SetEnabledAsync(task.Id, false));
+        var disabled = _scheduler.Snapshot().Single();
+        Assert.False(disabled.IsEnabled);
+        Assert.Equal("Autosave", disabled.Name);
+        Assert.Equal("60", disabled.TriggerValue);
+
+        Assert.True(await _scheduler.SetEnabledAsync(task.Id, true));
+        Assert.True(_scheduler.Snapshot().Single().IsEnabled);
+
+        Assert.False(await _scheduler.SetEnabledAsync(Guid.NewGuid(), true));
     }
 
     [Fact]
@@ -212,6 +231,22 @@ public class SchedulerServiceTests : IDisposable
         await _scheduler.AddAsync(task);
         await StartLoopAsync();
 
+        await AdvanceAsync(120);
+
+        Assert.Empty(await WaitForRunsAsync(names, 1, 400));
+        await _scheduler.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Disabling_a_task_via_SetEnabled_stops_it_from_firing()
+    {
+        var (names, subscription) = ObserveRuns();
+        using var _ = subscription;
+
+        var task = await _scheduler.AddAsync(IntervalTask(60));
+        await StartLoopAsync();
+
+        await _scheduler.SetEnabledAsync(task.Id, false);
         await AdvanceAsync(120);
 
         Assert.Empty(await WaitForRunsAsync(names, 1, 400));
@@ -331,5 +366,55 @@ public class SchedulerServiceTests : IDisposable
         Assert.True(await _scheduler.RunNowAsync(task.Id));
 
         Assert.Contains("Manual", await WaitForRunsAsync(names, 1));
+    }
+
+    // ── Backup action ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_RunBackup_task_runs_the_configured_backup_job()
+    {
+        var (names, subscription) = ObserveRuns();
+        using var _ = subscription;
+
+        var job = await _backups.AddAsync(new BackupJob
+        {
+            Name = "ScheduledBackup",
+            SourcePaths = [],
+            DestinationPath = Path.Combine(_dir, "backup-out"),
+        });
+        var task = await _scheduler.AddAsync(new ScheduledTask
+        {
+            Name = "NightlyBackup",
+            TriggerType = TriggerType.Interval,
+            TriggerValue = "86400",
+            ActionType = TaskActionType.RunBackup,
+            ActionValue = job.Id.ToString(),
+            IsEnabled = true,
+        });
+
+        Assert.True(await _scheduler.RunNowAsync(task.Id));
+
+        Assert.Contains("NightlyBackup", await WaitForRunsAsync(names, 1));
+    }
+
+    [Fact]
+    public async Task A_RunBackup_task_pointing_at_a_missing_job_does_not_report_success()
+    {
+        var (names, subscription) = ObserveRuns();
+        using var _ = subscription;
+
+        var task = await _scheduler.AddAsync(new ScheduledTask
+        {
+            Name = "BrokenBackupTask",
+            TriggerType = TriggerType.Interval,
+            TriggerValue = "86400",
+            ActionType = TaskActionType.RunBackup,
+            ActionValue = Guid.NewGuid().ToString(),
+            IsEnabled = true,
+        });
+
+        Assert.True(await _scheduler.RunNowAsync(task.Id));
+
+        Assert.Empty(await WaitForRunsAsync(names, 1, 400));
     }
 }

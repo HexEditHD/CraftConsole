@@ -11,7 +11,9 @@ public record ServerTypeInfo(
     string DisplayName,
     string Tag,
     string Description,
-    bool HasAutoDownload);
+    bool HasAutoDownload,
+    string? DownloadUrl = null,
+    string? ManualInstructions = null);
 
 /// <summary>
 /// Orchestrates server-JAR and Java downloads. One download of each kind at a
@@ -28,14 +30,25 @@ public sealed class SetupService
             "High-performance Spigot fork with extra optimisations. Supports all Bukkit/Spigot plugins.",
             HasAutoDownload: true),
         new(ServerType.Spigot, "Spigot", "PLUGIN",
-            "Community-driven Bukkit fork. Requires BuildTools to compile — manual install.",
-            HasAutoDownload: false),
+            "Community-driven Bukkit fork. Cannot be redistributed — BuildTools compiles it from source on your machine.",
+            HasAutoDownload: false,
+            DownloadUrl: "https://www.spigotmc.org/wiki/buildtools/",
+            ManualInstructions:
+                "java -jar BuildTools.jar --rev latest\n" +
+                "# Downloads BuildTools.jar from the link above first. Produces spigot-<version>.jar in this folder."),
         new(ServerType.Fabric, "Fabric", "MODDED",
-            "Lightweight mod loader for performance mods and technical gameplay. Manual install.",
-            HasAutoDownload: false),
+            "Lightweight mod loader for performance mods and technical gameplay.",
+            HasAutoDownload: true),
         new(ServerType.Forge, "Forge", "MODDED",
-            "The most popular platform for large modpacks. Installer required — manual install.",
-            HasAutoDownload: false),
+            "The most popular platform for large modpacks. The installer produces a run script and libraries folder, not a single jar.",
+            HasAutoDownload: false,
+            DownloadUrl: "https://files.minecraftforge.net/",
+            ManualInstructions:
+                "java -jar forge-<version>-installer.jar --installServer\n" +
+                "# Downloads the installer for your Minecraft version from the link above first, then run it in this folder."),
+        new(ServerType.NeoForge, "NeoForge", "MODDED",
+            "Community-driven continuation of Forge for modern Minecraft versions.",
+            HasAutoDownload: true),
         new(ServerType.Purpur, "Purpur", "EXTENDED",
             "Paper fork with extra configuration and gameplay tweaks.",
             HasAutoDownload: true),
@@ -85,7 +98,12 @@ public sealed class SetupService
 
                 Directory.CreateDirectory(directory);
                 var typeInfo = AllServerTypes.First(t => t.Type == type);
-                var fileName = $"{typeInfo.DisplayName.ToLowerInvariant()}-{resolved}.jar";
+                // NeoForge downloads ServerStarterJar, not the server itself — it self-installs
+                // in place via NeoForgeInstaller below, matching its own "server.jar" convention
+                // rather than this type's usual "{type}-{version}.jar" naming.
+                var fileName = type == ServerType.NeoForge
+                    ? "server.jar"
+                    : $"{typeInfo.DisplayName.ToLowerInvariant()}-{resolved}.jar";
                 var destPath = Path.Combine(directory, fileName);
 
                 Publish("server", "downloading", 0, $"Downloading {typeInfo.DisplayName} {resolved}…");
@@ -93,7 +111,11 @@ public sealed class SetupService
                     Publish("server", "downloading", p, $"Downloading {typeInfo.DisplayName} {resolved}…"));
 
                 await _serverDownload.DownloadAsync(url, destPath, progress, cts.Token);
-                Publish("server", "done", 1, $"Downloaded {fileName}", new { JarPath = destPath, Version = resolved });
+
+                if (type == ServerType.NeoForge)
+                    await InstallNeoForgeAsync(destPath, resolved, cts.Token);
+
+                Publish("server", "done", 1, $"Downloaded {typeInfo.DisplayName} {resolved}", new { JarPath = destPath, Version = resolved });
             }
             catch (NotSupportedException ex) { Publish("server", "error", 0, ex.Message); }
             catch (OperationCanceledException) { Publish("server", "cancelled", 0, "Download cancelled."); }
@@ -108,6 +130,23 @@ public sealed class SetupService
             }
         });
         return true;
+    }
+
+    /// <summary>
+    /// Runs ServerStarterJar's --installer step so the downloaded jar is actually runnable —
+    /// without this, launching it would just print ServerStarterJar's own "no run scripts found
+    /// and no --installer given" message instead of starting a server.
+    /// </summary>
+    private async Task InstallNeoForgeAsync(string jarPath, string version, CancellationToken ct)
+    {
+        Publish("server", "installing", 0.9, $"Installing NeoForge {version} (this can take a minute)…");
+
+        var installs = await JavaInstallationDetector.DetectAsync(ct);
+        var java = installs.OrderByDescending(j => j.MajorVersion).FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "No Java runtime was found. Detect or download one on this page, then download NeoForge again.");
+
+        await NeoForgeInstaller.RunAsync(java.ExecutablePath, jarPath, version, ct);
     }
 
     /// <summary>Starts a Java (Temurin) download to the user's Downloads folder.</summary>

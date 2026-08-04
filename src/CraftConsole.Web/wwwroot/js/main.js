@@ -1,8 +1,9 @@
 // App shell: navigation, hash router, topbar status cluster, EULA banner.
-import { h, icon, toast, confirmDialog } from './ui.js';
+import { h, icon, toast } from './ui.js';
 import { api } from './api.js';
 import { connectSse, on } from './bus.js';
-import { state, initStore } from './store.js';
+import { state, initStore, isAdmin } from './store.js';
+import { createServerControls } from './components/server-controls.js';
 
 import dashboard from './views/dashboard.js';
 import consoleView from './views/console.js';
@@ -17,13 +18,21 @@ import settings from './views/settings.js';
 
 const ROUTES = [dashboard, consoleView, players, issues, server, plugins, editor, backups, scheduler, settings];
 
+// These views are entirely gated on Admin-only endpoints server-side — every
+// action on them would 403 for an Operator, so there's nothing useful to show.
+const ADMIN_ONLY_VIEWS = new Set(['server', 'plugins', 'editor', 'scheduler', 'settings']);
+
 let activeCleanup = null;
 let issueBadge = null;
 
 // ── Navigation ──────────────────────────────────────────────────────────
 function buildNav() {
   const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  const admin = isAdmin();
   for (const route of ROUTES) {
+    if (ADMIN_ONLY_VIEWS.has(route.id) && !admin) continue;
+
     const item = h('button', {
       class: 'nav-item',
       id: `nav-${route.id}`,
@@ -50,7 +59,13 @@ function updateIssueBadge() {
 // ── Router ──────────────────────────────────────────────────────────────
 function route() {
   const id = location.hash.replace(/^#\//, '') || 'dashboard';
-  const view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+  let view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+
+  if (ADMIN_ONLY_VIEWS.has(view.id) && !isAdmin()) {
+    toast('That page needs an admin account.', 'err');
+    location.hash = '#/dashboard';
+    view = dashboard;
+  }
 
   activeCleanup?.();
   activeCleanup = null;
@@ -65,7 +80,7 @@ function route() {
 }
 
 // ── Topbar cluster ──────────────────────────────────────────────────────
-let pill, playersChip, profileChip, btnStart, btnStop, btnRestart;
+let pill, playersChip, profileChip, controls;
 
 function buildTopbar() {
   const cluster = document.getElementById('topbar-cluster');
@@ -80,20 +95,18 @@ function buildTopbar() {
 
   playersChip = h('span', { class: 'badge', title: 'Players online' }, '0 online');
 
-  btnStart = h('button', { class: 'btn primary sm', onclick: startServer }, icon('play'), 'Start');
-  btnRestart = h('button', { class: 'btn sm icon-only', title: 'Restart', onclick: restartServer }, icon('refresh'));
-  btnStop = h('button', { class: 'btn danger sm', onclick: stopServer }, icon('stop'), 'Stop');
+  controls = createServerControls();
 
-  cluster.append(profileChip, pill, playersChip, btnStart, btnRestart, btnStop);
+  cluster.append(
+    h('div', { class: 'topbar-group' }, profileChip, pill, playersChip),
+    h('span', { class: 'topbar-divider' }),
+    h('div', { class: 'topbar-group' }, controls.el));
   syncTopbar();
 }
 
 function syncTopbar() {
   const s = state.status;
   const status = s?.status ?? 'Stopped';
-  // Defaults match a managed server, so the buttons behave exactly as before
-  // until the first /api/status response actually carries capabilities.
-  const caps = s?.capabilities ?? { canStart: true, canStop: true, canRestart: true };
 
   pill.className = `status-pill ${status.toLowerCase()}`;
   pill.textContent = status;
@@ -102,50 +115,9 @@ function syncTopbar() {
 
   profileChip.querySelector('span.name').textContent = s?.profile?.name ?? 'No profile';
 
-  const running = status === 'Running';
-  const busy = status === 'Starting' || status === 'Stopping';
-  btnStart.disabled = running || busy || !caps.canStart;
-  btnStart.title = s?.profile?.mode === 'Rcon' ? 'Connect' : '';
-  btnStop.disabled = !running || !caps.canStop;
-  btnRestart.disabled = !running || !caps.canRestart;
-  btnRestart.title = caps.canRestart
-    ? 'Restart'
-    : 'This server is connected over RCON and can’t be restarted from here';
+  controls.sync();
 
   syncEulaBanner(s?.eulaRequired === true);
-}
-
-async function startServer() {
-  btnStart.disabled = true;
-  try {
-    await api.post('/api/server/start', {});
-    toast('Server starting…');
-  } catch (err) {
-    toast(err.message, 'err');
-    syncTopbar();
-  }
-}
-
-async function stopServer() {
-  if (!await confirmDialog('Stop server', 'Stop the Minecraft server? Connected players will be disconnected.', { danger: true, okLabel: 'Stop server' }))
-    return;
-  try {
-    await api.post('/api/server/stop');
-    toast('Stopping server…');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-}
-
-async function restartServer() {
-  if (!await confirmDialog('Restart server', 'Restart the Minecraft server now?', { okLabel: 'Restart' }))
-    return;
-  try {
-    toast('Restarting server…');
-    await api.post('/api/server/restart');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
 }
 
 // ── EULA banner ─────────────────────────────────────────────────────────
@@ -182,10 +154,19 @@ function syncConn() {
 
 // ── Logout ──────────────────────────────────────────────────────────────
 function buildLogout() {
-  document.querySelector('.sidebar-foot').append(
+  const foot = document.querySelector('.sidebar-foot');
+
+  if (state.session) {
+    foot.append(h('span', {
+      class: 'whoami', style: { marginLeft: 'auto' },
+      title: `Signed in as ${state.session.username} (${state.session.role})`,
+    }, `${state.session.username} · ${state.session.role}`));
+  }
+
+  foot.append(
     h('button', {
       class: 'btn ghost sm icon-only', title: 'Sign out',
-      style: { marginLeft: 'auto' },
+      style: { marginLeft: state.session ? '' : 'auto' },
       onclick: async () => {
         try { await api.post('/api/auth/logout'); } catch { /* clearing the cookie server-side is best-effort */ }
         location.reload();
@@ -195,8 +176,8 @@ function buildLogout() {
 
 // ── Boot ────────────────────────────────────────────────────────────────
 (async function boot() {
-  buildNav();
   await initStore();
+  buildNav();
   buildTopbar();
   buildLogout();
   updateIssueBadge();

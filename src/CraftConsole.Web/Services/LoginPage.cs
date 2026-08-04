@@ -16,6 +16,12 @@ public static class LoginPage
         var buttonLabel = configured ? "Sign in" : "Create password";
         var endpoint = configured ? "/api/auth/login" : "/api/auth/setup";
         var configuredJs = configured ? "true" : "false";
+        var passwordAutofocus = configured ? "" : " autofocus";
+
+        var usernameField = configured ? """
+            <label for="un">Username</label>
+            <input id="un" type="text" autocomplete="username" autofocus value="admin" required>
+            """ : "";
 
         var confirmField = configured ? "" : """
             <label for="pw2">Confirm password</label>
@@ -69,8 +75,9 @@ public static class LoginPage
               <div class="mark"></div>
               <div><h1>CraftConsole</h1><p class="sub">{{subtitle}}</p></div>
             </div>
+            {{usernameField}}
             <label for="pw">{{label}}</label>
-            <input id="pw" type="password" autocomplete="{{autocomplete}}" autofocus minlength="8" required>
+            <input id="pw" type="password" autocomplete="{{autocomplete}}"{{passwordAutofocus}} minlength="8" required>
             {{confirmField}}
             <button type="submit">{{buttonLabel}}</button>
             <div class="err" id="err"></div>
@@ -83,7 +90,10 @@ public static class LoginPage
             var pw = document.getElementById('pw').value;
             var err = document.getElementById('err');
             err.style.display = 'none';
-            if (!configured) {
+            var body = { password: pw };
+            if (configured) {
+              body.username = document.getElementById('un').value;
+            } else {
               var pw2 = document.getElementById('pw2').value;
               if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = ''; return; }
             }
@@ -92,7 +102,7 @@ public static class LoginPage
             fetch('{{endpoint}}', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ password: pw }),
+              body: JSON.stringify(body),
             }).then(function (res) {
               if (res.ok) { location.reload(); return; }
               return res.json().catch(function () { return {}; }).then(function (data) {

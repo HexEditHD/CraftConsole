@@ -6,6 +6,7 @@ set -e
 CC_USER=craftconsole
 CC_GROUP=craftconsole
 CC_DATA=/var/lib/craftconsole
+CC_SERVERS=/srv/minecraft
 CC_UNIT=craftconsole.service
 
 case "$1" in
@@ -27,9 +28,19 @@ case "$1" in
 
     mkdir -p "$CC_DATA"
     chown -R "$CC_USER":"$CC_GROUP" "$CC_DATA"
-    # Holds the password hash, server profiles and backups.
+    # Holds the password hash, server profiles and backup definitions.
     chmod 750 "$CC_DATA"
     chmod 755 /opt/craftconsole/CraftConsole
+
+    # Default suggested location for actual Minecraft server directories (see
+    # PlatformPaths.DefaultServerRoot) — a prefill in the UI, not enforced.
+    # Only created if missing, so a pre-existing /srv/minecraft with different
+    # ownership is left alone rather than silently reset on every upgrade.
+    if [ ! -e "$CC_SERVERS" ]; then
+      mkdir -p "$CC_SERVERS"
+      chown "$CC_USER":"$CC_GROUP" "$CC_SERVERS"
+      chmod 750 "$CC_SERVERS"
+    fi
 
     # Only touch systemd when it is actually the running init (skips containers
     # and chroots, where systemctl would fail).

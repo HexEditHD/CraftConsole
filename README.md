@@ -11,9 +11,11 @@ players, files, plugins, backups and scheduled tasks — all from one password-p
 ## Features
 
 - **Server control** — profiles in Managed or Remote (RCON) mode, start/stop/restart, a
-  guided server-JAR download (Vanilla, Paper and Purpur auto-download with a version picker),
-  and Java runtime detection with a real install — one click and a UAC prompt on Windows,
-  copy-pasteable `apt` commands on Linux.
+  guided server-JAR download (Vanilla, Paper, Purpur, Fabric and NeoForge auto-download with a
+  version picker; Spigot and classic Forge get a direct link and copy-pasteable install
+  instructions instead, since neither can be redistributed/automated), and Java runtime
+  detection with a real install — one click and a UAC prompt on Windows, copy-pasteable `apt`
+  commands on Linux.
 - **Live console** — streamed output with level filtering and search, coloured chat names, and
   a command bar with `/`-autocomplete and history.
 - **Players and moderation** — an online roster with IP, geolocation and join time; kick, ban
@@ -81,9 +83,20 @@ dotnet run --project src/CraftConsole.Web
 
 ## First run
 
-You will be asked to set a password before anything else is reachable. It is hashed with
-PBKDF2-SHA256 and stored on the machine only — **there is no recovery**. To reset it,
-delete `auth.json` from the data directory and restart.
+You will be asked to set a password before anything else is reachable. It creates a single
+`admin` account, hashed with PBKDF2-SHA256 and stored on the machine only — **there is no
+recovery**. To reset it, delete `auth.json` from the data directory and restart.
+
+Additional accounts can be added under **Settings → Users**, each with one of two roles:
+
+| Role | Can do |
+|---|---|
+| **Admin** | Everything — profiles, downloads, settings, TLS, backup/task management, other users |
+| **Operator** | Day-to-day operation — console, players, moderation, start/stop/restart, run existing backups |
+
+At least one enabled Admin always exists; the panel refuses to delete, disable, or demote the
+last one. Upgrading from a version before roles existed converts the existing password into that
+first Admin account automatically — same password, username `admin`.
 
 Then open **Server** to create a profile: point it at a server JAR (or download one — Vanilla,
 Paper and Purpur can be fetched directly), pick a Java runtime (or get one — Windows installs it
@@ -274,3 +287,15 @@ clean runner, and publishes with `SHA256SUMS`.
   unavailable rather than guessing.
 - Player geolocation calls `ipinfo.io` without an API key. It is best-effort, rate-limited,
   and sends player IP addresses to a third party.
+- **`[Not Secure]` in the console isn't a CraftConsole or TLS warning.** It's the Minecraft
+  server's own chat-signing system (since 1.19) prefixing unsigned messages — including `/say`
+  and anything else sent from outside a signed client connection. Nothing in the panel produces
+  that string; it's the server telling you a message's authenticity wasn't verified.
+- **NeoForge downloads need a detected Java runtime first.** Unlike the other auto-download
+  types, turning the download into an actually runnable server means running the real NeoForge
+  installer in the background (via [ServerStarterJar](https://github.com/neoforged/ServerStarterJar)),
+  which itself needs a JVM. Detect or download Java on the Server page before downloading
+  NeoForge — the download fails with a clear message if none is found. Classic Forge stays a
+  manual download; ServerStarterJar only supports Forge 1.17 and later, and reliably telling
+  those versions apart from earlier ones in Forge's version list wasn't worth the risk of
+  quietly offering a version that can't actually install.

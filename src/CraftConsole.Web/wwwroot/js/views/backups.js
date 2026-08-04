@@ -2,7 +2,8 @@
 import { h, icon, toast, confirmDialog, modal, timeAgo, fmtSize } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
-import { state } from '../store.js';
+import { state, isAdmin } from '../store.js';
+import { joinPath } from '../platform.js';
 
 export default {
   id: 'backups',
@@ -18,7 +19,7 @@ export default {
       h('div', { class: 'view-head' },
         h('span', { class: 'sub' }, 'Each run creates a timestamped .zip of the job’s sources.'),
         h('span', { class: 'spacer' }),
-        h('button', { class: 'btn sm primary', onclick: () => openEditor(null) }, icon('plus'), 'New backup job')),
+        isAdmin() ? h('button', { class: 'btn sm primary', onclick: () => openEditor(null) }, icon('plus'), 'New backup job') : null),
       list);
 
     async function load() {
@@ -38,34 +39,51 @@ export default {
       }
       for (const job of jobs) {
         const isRunning = running.has(job.id);
-        list.append(h('div', { class: 'card profile-card' },
+        const enabled = job.isEnabled ?? true;
+        const admin = isAdmin();
+        list.append(h('div', { class: 'card profile-card', style: enabled ? null : { opacity: .55 } },
+          admin
+            ? h('label', { class: 'switch', title: enabled ? 'Enabled' : 'Disabled' },
+                h('input', {
+                  type: 'checkbox', checked: enabled,
+                  onchange: e => toggle(job, e.target.checked),
+                }),
+                h('span', { class: 'track' }))
+            : null,
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               job.name,
-              h('span', { class: 'badge' }, job.compression)),
+              h('span', { class: 'badge' }, job.compression),
+              enabled ? null : h('span', { class: 'badge warn' }, 'Disabled')),
             h('div', { class: 'meta' },
               `${job.sourcePaths.length} source${job.sourcePaths.length === 1 ? '' : 's'} → ${job.destinationPath}`),
             h('div', { class: 'meta muted' },
               job.lastRun ? `Last run ${timeAgo(job.lastRun)}` : 'Never run')),
           h('div', { class: 'actions' },
             h('button', {
-              class: 'btn sm primary', disabled: isRunning,
+              class: 'btn sm primary', disabled: isRunning || !enabled,
+              title: enabled ? '' : 'This job is disabled — enable it first.',
               onclick: () => run(job),
             }, isRunning ? h('span', { class: 'spinner' }) : icon('play'), isRunning ? 'Running…' : 'Run now'),
-            h('button', {
+            admin ? h('button', {
               class: 'btn sm', title: 'Restore an archive from this job',
               onclick: () => openRestore(job),
-            }, icon('archive'), 'Restore'),
-            h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')),
-            h('button', {
+            }, icon('archive'), 'Restore') : null,
+            admin ? h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')) : null,
+            admin ? h('button', {
               class: 'btn sm icon-only danger', title: 'Delete',
               onclick: async () => {
                 if (!await confirmDialog('Delete backup job', `Delete “${job.name}”? Existing archives are kept.`, { danger: true, okLabel: 'Delete' })) return;
                 await api.del(`/api/backups/${job.id}`);
                 load();
               },
-            }, icon('trash')))));
+            }, icon('trash')) : null)));
       }
+    }
+
+    async function toggle(job, enabled) {
+      try { await api.put(`/api/backups/${job.id}`, { ...job, isEnabled: enabled }); }
+      catch (err) { toast(err.message, 'err'); build(); }
     }
 
     async function run(job) {
@@ -164,8 +182,8 @@ export default {
       const workingDir = state.status?.profile?.workingDirectory ?? '';
       const f = {
         name: h('input', { class: 'input', value: job?.name ?? 'World backup' }),
-        sources: h('textarea', { class: 'textarea', placeholder: 'One path per line', value: (job?.sourcePaths ?? (workingDir ? [workingDir + '\\world'] : [])).join('\n') }),
-        dest: h('input', { class: 'input', value: job?.destinationPath ?? '', placeholder: 'C:\\Backups\\minecraft' }),
+        sources: h('textarea', { class: 'textarea', placeholder: 'One path per line', value: (job?.sourcePaths ?? (workingDir ? [joinPath(workingDir, 'world')] : [])).join('\n') }),
+        dest: h('input', { class: 'input', value: job?.destinationPath ?? '', placeholder: state.system?.defaultBackupRoot ?? 'C:\\Backups\\minecraft' }),
         compression: h('select', { class: 'select' },
           ['Optimal', 'Fastest', 'NoCompression'].map(c =>
             h('option', { value: c, selected: (job?.compression ?? 'Optimal') === c }, c))),

@@ -7,5 +7,6 @@ public enum ServerType
     Spigot,
     Fabric,
     Forge,
-    Purpur
+    Purpur,
+    NeoForge
 }

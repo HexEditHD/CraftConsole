@@ -43,7 +43,8 @@ public sealed class CapabilityGatingTests : IAsyncDisposable
         // minting one directly skips the loopback-only /api/auth/setup dance,
         // which a WebApplicationFactory's TestServer connection doesn't satisfy.
         var auth = _factory.Services.GetRequiredService<AuthService>();
-        var token = auth.CreateSession();
+        auth.SetupAdminAsync("test-password-not-real").GetAwaiter().GetResult();
+        var token = auth.CreateSession(auth.ListUsers()[0].Id);
         _client.DefaultRequestHeaders.Add("Cookie", $"{AuthApi.CookieName}={token}");
     }
 

@@ -152,12 +152,27 @@ public sealed class TlsCertificateProvider
             {
                 var pfxBytes = Convert.FromBase64String(_protector.Unprotect(stored.ProtectedPfx));
                 var cert = X509CertificateLoader.LoadPkcs12(pfxBytes, password: null, X509KeyStorageFlags.DefaultKeySet);
+                var timeLeft = cert.NotAfter - DateTimeOffset.UtcNow;
+                var isUploaded = stored.Source == "uploaded";
 
-                if (cert.NotAfter - DateTimeOffset.UtcNow > RegenerateWithinExpiry)
+                // An uploaded certificate is kept until it actually expires, never swapped out
+                // early just because it's within the self-signed refresh window — an operator who
+                // uploaded a real certificate shouldn't be silently downgraded to self-signed a
+                // month before renewal. Self-signed certs still refresh proactively, since there's
+                // no trust lost by rotating one early.
+                if (timeLeft > TimeSpan.Zero && (isUploaded || timeLeft > RegenerateWithinExpiry))
+                {
+                    if (isUploaded && timeLeft <= RegenerateWithinExpiry)
+                        _log.LogWarning(
+                            "The uploaded TLS certificate expires {Expiry:u}, which is soon — upload a renewed one before then.",
+                            cert.NotAfter);
                     return (cert, stored.Source);
+                }
 
                 _log.LogWarning(
-                    "The stored TLS certificate expires {Expiry:u}, which is soon — generating a fresh self-signed one.",
+                    isUploaded
+                        ? "The uploaded TLS certificate expired {Expiry:u} — generating a fresh self-signed one until a renewed certificate is uploaded."
+                        : "The stored TLS certificate expires {Expiry:u}, which is soon — generating a fresh self-signed one.",
                     cert.NotAfter);
             }
             catch (CryptographicException ex)

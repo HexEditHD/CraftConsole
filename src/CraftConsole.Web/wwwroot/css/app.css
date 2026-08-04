@@ -132,6 +132,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
 .conn-dot.ok { background: var(--accent); box-shadow: 0 0 6px rgba(52,211,153,.7); }
 .conn-dot.bad { background: var(--danger); }
+.whoami { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
 
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
@@ -143,7 +144,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--surface);
 }
 #page-title { font-size: 16px; font-weight: 600; }
-#topbar-cluster { display: flex; align-items: center; gap: 10px; }
+#topbar-cluster { display: flex; align-items: center; gap: 16px; }
+.topbar-group { display: flex; align-items: center; gap: 10px; }
+.topbar-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 
 .profile-chip {
   display: flex; align-items: center; gap: 8px;
@@ -447,6 +450,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .dash-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
 
+.setup-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; align-items: start; }
+.setup-split > * { min-width: 0; }
+
 .gauge-pair { display: flex; align-items: center; justify-content: space-around; gap: 10px; padding: 6px 0; }
 .gauge-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .gauge-caption { font-size: 12px; color: var(--text-2); }
@@ -521,10 +527,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .suggestions {
   position: absolute; bottom: calc(100% + 4px); left: 14px;
-  min-width: 220px;
+  min-width: 220px; max-height: 240px;
   background: var(--surface-3); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); box-shadow: var(--shadow);
-  overflow: hidden; z-index: 10;
+  overflow: hidden auto; overscroll-behavior: contain; z-index: 10;
 }
 .suggestion {
   padding: 6px 13px; cursor: pointer;
@@ -665,7 +671,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* ── Responsive squeeze ──────────────────────────────────────────────── */
 @media (max-width: 900px) {
   #sidebar { width: 64px; }
-  .brand-text, .nav-item span.label, .sidebar-foot #conn-label { display: none; }
+  .brand-text, .nav-item span.label, .sidebar-foot #conn-label, .whoami { display: none; }
   .brand { justify-content: center; padding: 14px 8px; }
   .nav-item { justify-content: center; padding: 10px; }
   .console-rail { display: none; }
