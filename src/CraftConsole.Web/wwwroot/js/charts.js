@@ -10,11 +10,18 @@ function svgEl(tag, attrs = {}) {
   return el;
 }
 
+// SVG presentation attributes (stroke, fill, stop-color) don't reliably resolve
+// var() the way a style declaration does, so callers that don't pass an explicit
+// color get the accent resolved to a real value here.
+function accentColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#9184d9';
+}
+
 /**
  * Single-series sparkline with soft area fill.
  * @param values numeric array (oldest → newest)
  */
-export function sparkline(values, { width = 180, height = 36, max = null, color = '#34D399' } = {}) {
+export function sparkline(values, { width = 180, height = 36, max = null, color = accentColor() } = {}) {
   const svg = svgEl('svg', {
     viewBox: `0 0 ${width} ${height}`,
     width: '100%',
@@ -65,20 +72,28 @@ export function sparkline(values, { width = 180, height = 36, max = null, color 
   return svg;
 }
 
-/** Percent → status color at conventional thresholds. */
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/**
+ * Percent → status color. Pressure reads as tonal value on the neutral ramp,
+ * not hue — a resolved value works both as an inline style and as an SVG
+ * presentation attribute, unlike a bare var() string.
+ */
 export function thresholdColor(percent) {
-  if (percent >= 90) return 'var(--danger)';
-  if (percent >= 70) return 'var(--warn)';
-  return 'var(--accent)';
+  if (percent >= 88) return cssVar('--color-neutral-100');
+  if (percent >= 68) return cssVar('--color-neutral-300');
+  return accentColor();
 }
 
 /**
  * Radial gauge (270° arc). The numeric value is drawn as real text in text
  * tokens; the arc color carries the threshold state.
  */
-export function gauge(percent, { size = 118, label = '' } = {}) {
+export function gauge(percent, { size = 112, label = '' } = {}) {
   const p = Math.max(0, Math.min(100, percent));
-  const r = size / 2 - 9;
+  const r = size / 2 - 8;
   const c = size / 2;
   const startAngle = 135, sweep = 270;
   const arcLen = (2 * Math.PI * r) * (sweep / 360);
@@ -94,25 +109,25 @@ export function gauge(percent, { size = 118, label = '' } = {}) {
   const svg = svgEl('svg', { viewBox: `0 0 ${size} ${size}`, width: size, height: size, role: 'img' });
 
   const track = svgEl('path', {
-    d, fill: 'none', stroke: 'var(--surface-3)', 'stroke-width': 8, 'stroke-linecap': 'round',
+    d, fill: 'none', stroke: cssVar('--color-neutral-900'), 'stroke-width': 6, 'stroke-linecap': 'round',
   });
 
   const value = svgEl('path', {
-    d, fill: 'none', stroke: thresholdColor(p), 'stroke-width': 8, 'stroke-linecap': 'round',
+    d, fill: 'none', stroke: thresholdColor(p), 'stroke-width': 6, 'stroke-linecap': 'round',
     'stroke-dasharray': `${(arcLen * p / 100).toFixed(2)} ${arcLen.toFixed(2)}`,
-    style: 'transition: stroke-dasharray .4s, stroke .4s',
+    style: 'transition: stroke-dasharray var(--t2), stroke var(--t2)',
   });
 
   const num = svgEl('text', {
     x: c, y: c + 1, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
-    fill: 'var(--text)', 'font-size': '21', 'font-weight': '650',
+    fill: cssVar('--color-text'), 'font-size': '21', 'font-weight': '500',
     'font-family': 'inherit',
   });
   num.textContent = `${Math.round(p)}%`;
 
   const sub = svgEl('text', {
-    x: c, y: c + 20, 'text-anchor': 'middle',
-    fill: 'var(--text-3)', 'font-size': '9.5', 'letter-spacing': '.08em',
+    x: c, y: c + 18, 'text-anchor': 'middle',
+    fill: cssVar('--muted-2'), 'font-size': '9', 'letter-spacing': '.1em',
   });
   sub.textContent = label.toUpperCase();
 

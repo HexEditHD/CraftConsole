@@ -5,8 +5,9 @@ import { api } from '../api.js';
 
 export default {
   id: 'editor',
-  title: 'Editor',
-  icon: 'fileText',
+  title: 'Files',
+  subtitle: 'Config editor jailed to the server directory',
+  icon: 'fileCode',
 
   render(el) {
     let tabs = [];        // {path, name, content, savedContent, dirty}
@@ -29,7 +30,12 @@ export default {
     });
     const statusPath = h('span', { class: 'mono' }, '');
     const statusInfo = h('span', {}, '');
-    const saveBtn = h('button', { class: 'btn sm primary', onclick: save, disabled: true }, icon('save'), 'Save');
+    const saveBtn = h('button', { class: 'btn sm', onclick: save, disabled: true }, icon('save'), 'Save');
+    const syncSaveBtn = () => {
+      const dirty = !!active?.dirty;
+      saveBtn.className = `btn sm${dirty ? ' primary' : ''}`;
+      saveBtn.disabled = !dirty;
+    };
 
     const editorMain = h('div', { class: 'editor-main' },
       tabBar,
@@ -144,7 +150,7 @@ export default {
             onclick: e => { e.stopPropagation(); closeTab(tab); },
           }, icon('x', 'icon'))));
       }
-      saveBtn.disabled = !active?.dirty;
+      syncSaveBtn();
     }
 
     function syncStatus() {
@@ -153,7 +159,7 @@ export default {
         const lines = active.content.split('\n').length;
         statusInfo.textContent = `${lines} lines${active.dirty ? ' · unsaved' : ''}`;
       } else statusInfo.textContent = '';
-      saveBtn.disabled = !active?.dirty;
+      syncSaveBtn();
     }
 
     async function save() {

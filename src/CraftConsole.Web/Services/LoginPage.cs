@@ -40,33 +40,39 @@ public static class LoginPage
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>CraftConsole — {{title}}</title>
         <style>
-          :root { --bg:#0B0E14; --surface:#11151D; --border:#232A38;
-                  --text:#E8ECF4; --text-2:#9AA5B8; --text-3:#667084;
-                  --accent:#34D399; --accent-strong:#10B981; --danger:#F87171; --danger-dim:rgba(248,113,113,.12); }
+          @font-face { font-family:'Inter'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/inter-400.woff2') format('woff2'); }
+          @font-face { font-family:'Inter'; font-style:normal; font-weight:500; font-display:swap; src:url('/fonts/inter-500.woff2') format('woff2'); }
+          :root { --bg:#161826; --surface:#232532; --hair:color-mix(in srgb, #e9e9ed 16%, transparent);
+                  --text:#e9e9ed; --muted:color-mix(in srgb, #e9e9ed 55%, transparent); --muted-2:color-mix(in srgb, #e9e9ed 38%, transparent);
+                  --accent:#9184d9; --accent-400:#b5abfc; --lvl-err:#d98f8f; --danger-dim:color-mix(in srgb, #d98f8f 12%, transparent); }
           * { box-sizing:border-box; }
           html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
-                      font-family:'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,sans-serif; }
+                      font-family:'Inter',system-ui,-apple-system,sans-serif; }
           body { display:flex; align-items:center; justify-content:center; padding:20px; }
-          .card { width:100%; max-width:340px; background:var(--surface); border:1px solid var(--border);
-                  border-radius:14px; padding:28px; box-shadow:0 8px 30px rgba(0,0,0,.35); }
+          ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+          :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+          .card { width:100%; max-width:340px; background:var(--surface); border-radius:14px; padding:28px;
+                  box-shadow:0 0 0 1px #3f424d, 0 8px 30px rgba(0,0,0,.35); }
           .brand { display:flex; align-items:center; gap:11px; margin-bottom:22px; }
           .mark { width:34px; height:34px; border-radius:9px; flex-shrink:0;
-                  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,.28), transparent 42%),
-                              linear-gradient(180deg, #10B981 0%, #10B981 52%, #065F46 52%); }
-          h1 { font-size:15px; margin:0; font-weight:650; }
-          p.sub { margin:2px 0 0; font-size:12px; color:var(--text-3); }
-          label { display:block; font-size:12px; font-weight:600; color:var(--text-2); margin:14px 0 5px; }
-          input { width:100%; padding:9px 11px; background:var(--bg); border:1px solid var(--border);
+                  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,.22), transparent 42%),
+                              linear-gradient(180deg, var(--accent) 0%, var(--accent) 52%, #5d5294 52%); }
+          h1 { font-size:15px; margin:0; font-weight:500; }
+          p.sub { margin:2px 0 0; font-size:12px; color:var(--muted-2); }
+          label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin:14px 0 5px; }
+          input { width:100%; padding:9px 11px; background:var(--bg); border:1px solid var(--hair);
                   border-radius:8px; color:var(--text); font-size:13.5px; }
-          input:focus { outline:none; border-color:var(--accent-strong); }
-          button { width:100%; margin-top:18px; padding:10px; border:none; border-radius:8px;
-                   background:var(--accent-strong); color:#06281C; font-weight:600; font-size:13.5px; cursor:pointer; }
-          button:hover { background:var(--accent); }
-          button:disabled { opacity:.6; cursor:not-allowed; }
+          input:focus { outline:none; border-color:var(--accent); }
+          button { width:100%; margin-top:18px; padding:10px; border:1px solid var(--accent); border-radius:8px;
+                   background:transparent; color:var(--accent); font-weight:600; font-size:13.5px; cursor:pointer;
+                   transition: background .17s, border-color .17s, transform .17s; }
+          button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); transform: translateY(-1px); }
+          button:active:not(:disabled) { border-color: var(--accent-400); color: var(--accent-400); }
+          button:disabled { opacity:.45; cursor:not-allowed; }
           .err { display:none; margin-top:12px; padding:9px 11px; background:var(--danger-dim);
-                 border:1px solid rgba(248,113,113,.35); border-radius:8px; color:var(--danger); font-size:12.5px; }
-          .hint { margin-top:12px; font-size:11.5px; color:var(--text-3); line-height:1.5; }
-          .hint code { color:var(--text-2); }
+                 border:1px solid color-mix(in srgb, var(--lvl-err) 35%, transparent); border-radius:8px; color:var(--lvl-err); font-size:12.5px; }
+          .hint { margin-top:12px; font-size:11.5px; color:var(--muted-2); line-height:1.5; }
+          .hint code { color:var(--muted); }
         </style>
         </head>
         <body>

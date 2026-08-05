@@ -1,20 +1,25 @@
-// Start/Restart/Stop controls for the active server, with capability gating.
-// Shared by the topbar and the active profile's row in the Server view so the
+// Start/Stop toggle + Restart for the active server, with capability gating.
+// Shared by the header and the active profile's row in the Server view so the
 // gating logic and post-start navigation only need to live in one place.
 import { h, icon, toast, confirmDialog } from '../ui.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
 
 export function createServerControls() {
-  const startLabel = h('span', { class: 'label' }, 'Start');
-  const btnStart = h('button', { class: 'btn primary sm', onclick: start }, icon('play'), startLabel);
-  const btnRestart = h('button', { class: 'btn sm icon-only', title: 'Restart', onclick: restart }, icon('refresh'));
-  const btnStop = h('button', { class: 'btn danger sm', onclick: stop }, icon('stop'), 'Stop');
+  const toggleIcon = h('span', {});
+  const toggleLabel = h('span', {}, 'Start');
+  const toggleBtn = h('button', {
+    class: 'server-toggle stopped',
+    onclick: () => (toggleBtn.dataset.running === 'true' ? stop() : start()),
+  }, toggleIcon, toggleLabel);
+  const btnRestart = h('button', {
+    class: 'icon-btn hairline restart-btn', title: 'Restart', 'aria-label': 'Restart server', onclick: restart,
+  }, icon('arrowClockwise'));
 
-  const el = h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, btnStart, btnRestart, btnStop);
+  const el = h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, toggleBtn, btnRestart);
 
   async function start() {
-    btnStart.disabled = true;
+    toggleBtn.disabled = true;
     try {
       await api.post('/api/server/start', {});
       toast('Server starting…');
@@ -53,9 +58,12 @@ export function createServerControls() {
     const busy = status === 'Starting' || status === 'Stopping';
     const isRcon = s?.profile?.mode === 'Rcon';
 
-    btnStart.disabled = running || busy || !caps.canStart;
-    startLabel.textContent = isRcon ? 'Connect' : 'Start';
-    btnStop.disabled = !running || !caps.canStop;
+    toggleBtn.dataset.running = String(running);
+    toggleBtn.className = `server-toggle ${running ? 'running' : 'stopped'}`;
+    toggleBtn.disabled = running ? !caps.canStop : (busy || !caps.canStart);
+    toggleIcon.replaceChildren(icon(running ? 'stop' : 'play'));
+    toggleLabel.textContent = running ? 'Stop' : (isRcon ? 'Connect' : 'Start');
+
     btnRestart.disabled = !running || !caps.canRestart;
     btnRestart.title = caps.canRestart
       ? 'Restart'
