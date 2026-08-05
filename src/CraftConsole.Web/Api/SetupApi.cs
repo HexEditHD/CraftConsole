@@ -13,6 +13,7 @@ public static class SetupApi
     public record SettingsDto(
         bool ShowTimestamp, bool ShowDate, bool AutoScrollConsole, int MaxConsoleLines,
         string ColorInfo, string ColorWarn, string ColorError, string ColorPlayer);
+    public record BrowseEntryDto(string Name, string Path);
 
     public static void MapSetupApi(this IEndpointRouteBuilder app)
     {
@@ -126,6 +127,78 @@ public static class SetupApi
         {
             setup.Cancel(kind);
             return Results.NoContent();
+        }).RequireRole(Role.Admin);
+
+        // ── Folder picker ─────────────────────────────────────────────────
+        // Backs the destination-folder picker on server/backup setup forms.
+        // Not jailed to a profile directory — Admins can already point those
+        // forms at any path on disk by typing it, so this is a UX convenience
+        // over an already-trusted capability, not a new one. Read-only:
+        // it only lists directory names, never file contents.
+        app.MapGet("/api/setup/browse", (string? path) =>
+        {
+            IResult DriveList()
+            {
+                var drives = DriveInfo.GetDrives()
+                    .Where(d => { try { return d.IsReady; } catch { return false; } })
+                    .Select(d => new BrowseEntryDto(d.Name.TrimEnd('\\'), d.Name))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                return Results.Json(new { Path = "", Parent = (string?)null, Directories = drives }, Json.Options);
+            }
+
+            // No path means: show the drive list on Windows, or "/" on Unix
+            // (which has no separate drive-list concept).
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (OperatingSystem.IsWindows()) return DriveList();
+                path = "/";
+            }
+
+            string fullPath;
+            try { fullPath = Path.GetFullPath(path); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return Results.BadRequest(new { Message = "Invalid path." });
+            }
+
+            // The requested path may not exist yet — it can be a suggested
+            // default that was never created, or a destination the user is
+            // about to create. Walk up to the nearest real ancestor instead
+            // of dead-ending; fall back to the drive list / "/" if nothing
+            // on that branch exists at all.
+            while (!Directory.Exists(fullPath))
+            {
+                var up = Path.GetDirectoryName(fullPath);
+                if (string.IsNullOrEmpty(up) || up == fullPath)
+                    return OperatingSystem.IsWindows() ? DriveList() : Results.BadRequest(new { Message = "That folder doesn't exist." });
+                fullPath = up;
+            }
+
+            List<BrowseEntryDto> directories;
+            try
+            {
+                directories = Directory.GetDirectories(fullPath)
+                    .Select(d => new BrowseEntryDto(Path.GetFileName(d), d))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                return Results.Json(new { Message = "Access denied to this folder." }, Json.Options, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var atRoot = string.Equals(
+                fullPath.TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+            // At a drive root on Windows, "up" goes to the drive list (empty
+            // path); at "/" on Linux there's nowhere further up to go.
+            string? parent = atRoot
+                ? (OperatingSystem.IsWindows() ? "" : null)
+                : Path.GetDirectoryName(fullPath);
+
+            return Results.Json(new { Path = fullPath, Parent = parent, Directories = directories }, Json.Options);
         }).RequireRole(Role.Admin);
 
         // ── Settings ──────────────────────────────────────────────────────

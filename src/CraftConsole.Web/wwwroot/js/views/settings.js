@@ -123,7 +123,7 @@ function usersCard() {
           }, u.enabled ? 'Disable' : 'Enable'),
           h('button', { class: 'btn sm', onclick: () => openPasswordReset(u) }, 'Reset password'),
           h('button', {
-            class: 'btn sm icon-only danger', title: 'Delete',
+            class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${u.username}”`,
             onclick: async () => {
               if (!await confirmDialog('Delete user', `Delete “${u.username}”?`, { danger: true, okLabel: 'Delete' })) return;
               api.del(`/api/users/${u.id}`).then(load).catch(err => toast(err.message, 'err'));
@@ -218,7 +218,8 @@ function securityCard() {
 export default {
   id: 'settings',
   title: 'Settings',
-  icon: 'sliders',
+  subtitle: 'Panel, users and TLS certificate',
+  icon: 'slidersHorizontal',
 
   render(el) {
     const s = { ...state.settings };
@@ -239,14 +240,16 @@ export default {
       } catch (err) { toast(err.message, 'err'); }
     }, 500);
 
-    const switchRow = (label, desc, key) =>
-      h('div', { class: 'switch-row' },
+    // sep: fade the row's bottom edge, for rows that aren't last in their card.
+    const switchRow = (label, desc, key, sep = true) =>
+      h('div', { class: `switch-row${sep ? ' rule-fade-bottom' : ''}` },
         h('div', {},
           h('div', { class: 'switch-label' }, label),
           h('div', { class: 'switch-desc' }, desc)),
         h('label', { class: 'switch' },
           h('input', {
             type: 'checkbox', checked: !!s[key],
+            role: 'switch', 'aria-checked': String(!!s[key]), 'aria-label': label,
             onchange: e => { s[key] = e.target.checked; save(); },
           }),
           h('span', { class: 'track' })));
@@ -320,7 +323,44 @@ export default {
       h('p', { class: 'muted small', style: { marginTop: '8px' } },
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
-    el.append(h('div', { class: 'grid', style: { maxWidth: '660px' } },
-      consoleCard, colorsCard, securityCard(), usersCard(), tlsCard(), aboutCard));
+    // usersCard()/tlsCard() self-load over the API on construction — build
+    // them (and securityCard(), for consistency) only once their tab is
+    // actually visited, and cache the result so revisiting doesn't re-fetch.
+    let securityEl = null, usersEl = null, tlsEl = null;
+    const getSecurity = () => securityEl ??= securityCard();
+    const getUsers = () => usersEl ??= usersCard();
+    const getTls = () => tlsEl ??= tlsCard();
+
+    const TABS = [
+      ['console', 'Console'],
+      ['security', 'Security'],
+      ['users', 'Users'],
+      ['tls', 'TLS & about'],
+    ];
+    let activeTab = 'console';
+    const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--space-4)' } });
+    const body = h('div', { class: 'grid', style: { maxWidth: '660px' } });
+
+    function buildTabs() {
+      tabsEl.innerHTML = '';
+      for (const [id, label] of TABS) {
+        tabsEl.append(h('button', {
+          class: `seg-item${activeTab === id ? ' active' : ''}`,
+          onclick: () => { activeTab = id; buildTabs(); buildBody(); },
+        }, label));
+      }
+    }
+
+    function buildBody() {
+      body.innerHTML = '';
+      if (activeTab === 'console') body.append(consoleCard, colorsCard);
+      else if (activeTab === 'security') body.append(getSecurity());
+      else if (activeTab === 'users') body.append(getUsers());
+      else body.append(getTls(), aboutCard);
+    }
+
+    buildTabs();
+    buildBody();
+    el.append(tabsEl, body);
   },
 };

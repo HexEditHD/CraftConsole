@@ -21,16 +21,23 @@ export function h(tag, props = {}, ...children) {
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────
-export function toast(message, kind = 'ok', ms = 3200) {
+export function toast(message, kind = 'ok', ms = 2600) {
   const root = document.getElementById('toasts');
   const el = h('div', { class: `toast ${kind}` },
-    icon(kind === 'err' ? 'alert' : 'check'),
+    icon(kind === 'err' ? 'warningCircle' : 'checkCircle'),
     h('span', {}, message));
   root.append(el);
   setTimeout(() => {
     el.classList.add('leaving');
     setTimeout(() => el.remove(), 220);
   }, ms);
+}
+
+// ── Empty states ────────────────────────────────────────────────────────
+/** A `.card` containing the standard icon + title + sub empty-state layout. */
+export function emptyState(iconName, title, sub) {
+  return h('div', { class: 'card' }, h('div', { class: 'empty' },
+    icon(iconName), h('div', { class: 'empty-title' }, title), h('div', { class: 'empty-sub' }, sub)));
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────

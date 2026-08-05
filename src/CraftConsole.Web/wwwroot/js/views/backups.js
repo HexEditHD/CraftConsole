@@ -8,6 +8,7 @@ import { joinPath } from '../platform.js';
 export default {
   id: 'backups',
   title: 'Backups',
+  subtitle: 'Jobs, on-demand runs and restores',
   icon: 'archive',
 
   render(el) {
@@ -46,6 +47,7 @@ export default {
             ? h('label', { class: 'switch', title: enabled ? 'Enabled' : 'Disabled' },
                 h('input', {
                   type: 'checkbox', checked: enabled,
+                  role: 'switch', 'aria-checked': String(enabled), 'aria-label': `${enabled ? 'Disable' : 'Enable'} “${job.name}”`,
                   onchange: e => toggle(job, e.target.checked),
                 }),
                 h('span', { class: 'track' }))
@@ -69,9 +71,9 @@ export default {
               class: 'btn sm', title: 'Restore an archive from this job',
               onclick: () => openRestore(job),
             }, icon('archive'), 'Restore') : null,
-            admin ? h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(job) }, icon('pencil')) : null,
+            admin ? h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${job.name}”`, onclick: () => openEditor(job) }, icon('pencil')) : null,
             admin ? h('button', {
-              class: 'btn sm icon-only danger', title: 'Delete',
+              class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${job.name}”`,
               onclick: async () => {
                 if (!await confirmDialog('Delete backup job', `Delete “${job.name}”? Existing archives are kept.`, { danger: true, okLabel: 'Delete' })) return;
                 await api.del(`/api/backups/${job.id}`);
@@ -133,8 +135,8 @@ export default {
         body: h('div', {},
           !serverStopped
             ? h('div', {
-                class: 'banner',
-                style: { margin: '0 0 14px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(251,191,36,.35)' },
+                class: 'banner warn inline',
+                style: { margin: '0 0 14px' },
               },
                 icon('alert'),
                 h('span', {}, 'Stop the server first. Restoring over a running world would be overwritten by the next autosave.'))

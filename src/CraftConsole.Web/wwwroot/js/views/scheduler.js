@@ -57,8 +57,9 @@ function unsupportedReason(value, kind) {
 
 export default {
   id: 'scheduler',
-  title: 'Scheduler',
-  icon: 'clock',
+  title: 'Tasks',
+  subtitle: 'Scheduled triggers and actions',
+  icon: 'clockCountdown',
 
   render(el) {
     let tasks = [];
@@ -102,6 +103,7 @@ export default {
               h('label', { class: 'switch', title: task.isEnabled ? 'Enabled' : 'Disabled' },
                 h('input', {
                   type: 'checkbox', checked: task.isEnabled,
+                  role: 'switch', 'aria-checked': String(task.isEnabled),
                   'aria-label': `${task.isEnabled ? 'Disable' : 'Enable'} “${task.name}”`,
                   onchange: e => toggle(task, e.target.checked),
                 }),
@@ -120,9 +122,9 @@ export default {
                   catch (err) { toast(err.message, 'err'); }
                 },
               }, icon('play'), 'Run'),
-              h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(task) }, icon('pencil')),
+              h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${task.name}”`, onclick: () => openEditor(task) }, icon('pencil')),
               h('button', {
-                class: 'btn sm icon-only danger', title: 'Delete',
+                class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${task.name}”`,
                 onclick: async () => {
                   if (!await confirmDialog('Delete task', `Delete “${task.name}”?`, { danger: true, okLabel: 'Delete' })) return;
                   await api.del(`/api/tasks/${task.id}`);

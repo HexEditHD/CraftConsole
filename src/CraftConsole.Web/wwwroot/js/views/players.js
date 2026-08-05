@@ -1,5 +1,5 @@
 // Players: online roster with moderation actions, banned players, banned IPs.
-import { h, icon, toast, promptReason, confirmDialog, timeAgo } from '../ui.js';
+import { h, icon, toast, promptReason, confirmDialog, timeAgo, emptyState } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
@@ -8,7 +8,8 @@ import { usernameColor } from '../usercolor.js';
 export default {
   id: 'players',
   title: 'Players',
-  icon: 'users',
+  subtitle: () => `${state.players.length} online of a max ${state.status?.maxPlayers ?? 20}`,
+  icon: 'usersThree',
 
   render(el) {
     let tab = 'online';
@@ -16,7 +17,7 @@ export default {
     let bannedIps = { available: true, reason: null, entries: [] };
     let whitelist = { available: true, reason: null, entries: [], enabled: false };
 
-    const tabs = h('div', { class: 'tabs' });
+    const tabs = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--space-4)' } });
     const body = h('div');
     el.append(tabs, body);
 
@@ -39,7 +40,7 @@ export default {
       for (const [id, label] of TABS) {
         const count = tabCount(id);
         tabs.append(h('button', {
-          class: `tab${tab === id ? ' active' : ''}`,
+          class: `seg-item${tab === id ? ' active' : ''}`,
           onclick: () => { tab = id; buildTabs(); buildBody(); },
         }, `${label}${count ? ` (${count})` : ''}`));
       }
@@ -68,12 +69,7 @@ export default {
     }
 
     function avatarCell(username, colorHex) {
-      const avatar = h('span', { class: 'avatar', style: { background: colorHex } }, username[0]?.toUpperCase() ?? '?');
-      avatar.prepend(h('img', {
-        src: `https://mc-heads.net/avatar/${encodeURIComponent(username)}/28`,
-        alt: '', loading: 'lazy',
-        onerror: function () { this.remove(); },
-      }));
+      const avatar = h('span', { class: 'avatar sm', style: { background: colorHex } }, username[0]?.toUpperCase() ?? '?');
       return h('span', { class: 'player-cell' }, avatar, username);
     }
 
@@ -150,6 +146,7 @@ export default {
             h('label', { class: 'switch', title: serverUp ? '' : 'The server must be running' },
               h('input', {
                 type: 'checkbox', checked: whitelist.enabled, disabled: !serverUp,
+                role: 'switch', 'aria-checked': String(whitelist.enabled), 'aria-label': 'Whitelist enforcement',
                 onchange: e => whitelistAction(
                   e.target.checked ? 'on' : 'off', null,
                   e.target.checked ? 'Whitelist enabled' : 'Whitelist disabled'),
@@ -213,7 +210,7 @@ export default {
             h('th', {}, 'Player'), h('th', {}, 'Reason'), h('th', {}, 'Source'),
             h('th', {}, 'Created'), h('th', {}))),
           h('tbody', {}, banned.entries.map(b => h('tr', {},
-            h('td', {}, avatarCell(b.name, 'var(--surface-3)')),
+            h('td', {}, avatarCell(b.name, 'var(--color-neutral-800)')),
             h('td', { class: 'text-2' }, b.reason || '—'),
             h('td', { class: 'muted' }, b.source || '—'),
             h('td', { class: 'muted small' }, b.created || '—'),
@@ -256,8 +253,3 @@ export default {
     return () => offs.forEach(off => off());
   },
 };
-
-function emptyState(iconName, title, sub) {
-  return h('div', { class: 'card' }, h('div', { class: 'empty' },
-    icon(iconName), h('div', { class: 'empty-title' }, title), h('div', { class: 'empty-sub' }, sub)));
-}

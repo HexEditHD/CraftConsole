@@ -1,6 +1,7 @@
-// Live console: streamed log with level filter and search, command input
-// with history + autocomplete, online-players rail.
-import { h, icon, toast, fmtClock } from '../ui.js';
+// Live console — the hero screen. Streamed log with a segmented level filter
+// and search, command input with history + autocomplete, online-players rail
+// with quick commands.
+import { h, icon, toast, fmtClock, timeAgo } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
@@ -23,18 +24,41 @@ const COMMANDS = [
   '/whitelist', '/worldborder', '/xp',
 ];
 
+const QUICK_COMMANDS = ['/list', '/save-all', '/whitelist on', '/weather clear', '/time set day'];
+
 const CHAT_RE = /^<(\w+)> /;
 const MAX_DOM_LINES = 3000;
+
+const FILTERS = [
+  ['all', 'All'],
+  ['info', 'Info'],
+  ['warn', 'Warn'],
+  ['error', 'Error'],
+  ['chat', 'Chat'],
+];
+
+function isChat(entry) { return CHAT_RE.test(entry.message); }
+
+/** Which of the five segmented-control buckets an entry belongs to. */
+function bucketOf(entry) {
+  if (isChat(entry)) return 'chat';
+  const lvl = (entry.level ?? 'Unknown').toLowerCase();
+  if (lvl === 'warn') return 'warn';
+  if (lvl === 'error') return 'error';
+  if (lvl === 'info' || lvl === 'input') return 'info';
+  return null; // debug/unknown — only reachable under "all"
+}
 
 export default {
   id: 'console',
   title: 'Console',
-  icon: 'terminal',
+  subtitle: () => `Live output from ${state.status?.profile?.name ?? 'the server'}`,
+  icon: 'terminalWindow',
 
   render(el) {
     let levelFilter = 'all';
     let searchText = '';
-    let autoScroll = state.settings?.autoScrollConsole ?? true;
+    let follow = state.settings?.autoScrollConsole ?? true;
     let history = JSON.parse(localStorage.getItem('cc-cmd-history') ?? '[]');
     let historyIndex = -1;
     let selSuggestion = -1;
@@ -44,31 +68,44 @@ export default {
     applyColorVars(el);
 
     // ── Toolbar ──────────────────────────────────────────────────────────
-    const chips = ['all', 'info', 'warn', 'error', 'debug'].map(lvl =>
-      h('button', {
-        class: `chip${lvl === 'all' ? ' active' : ''}`,
-        onclick: function () {
-          levelFilter = lvl;
-          el.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-          this.classList.add('active');
-          rebuildLog();
-        },
-      }, lvl === 'all' ? 'All' : lvl[0].toUpperCase() + lvl.slice(1)));
+    const segItems = {};
+    const seg = h('div', { class: 'seg' },
+      FILTERS.map(([id, label]) => {
+        const countEl = h('span', { class: 'count' }, '0');
+        const btn = h('button', {
+          class: `seg-item${id === 'all' ? ' active' : ''}`,
+          onclick: () => {
+            levelFilter = id;
+            seg.querySelectorAll('.seg-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            rebuildLog();
+          },
+        }, label, countEl);
+        segItems[id] = { btn, countEl };
+        return btn;
+      }));
 
     const searchInput = h('input', {
-      class: 'input search', placeholder: 'Filter…', type: 'search',
+      type: 'search', placeholder: 'Filter output',
       oninput: () => { searchText = searchInput.value.toLowerCase(); rebuildLog(); },
     });
+    const searchField = h('div', { class: 'search-field' }, icon('magnifyingGlass'), searchInput);
 
-    const autoBtn = h('button', {
-      class: `chip${autoScroll ? ' active' : ''}`,
+    const followDot = h('span', { class: 'dot' });
+    const followBtn = h('button', {
+      class: `follow-toggle${follow ? ' on' : ''}`,
       title: 'Auto-scroll to newest output',
       onclick: () => {
-        autoScroll = !autoScroll;
-        autoBtn.classList.toggle('active', autoScroll);
-        if (autoScroll) scrollToBottom();
+        follow = !follow;
+        followBtn.classList.toggle('on', follow);
+        if (follow) scrollToBottom();
       },
-    }, 'Auto-scroll');
+    }, followDot, 'Follow');
+
+    const clearBtn = h('button', {
+      class: 'toolbar-icon-btn', title: 'Clear console', 'aria-label': 'Clear console',
+      onclick: async () => { await api.del('/api/console'); },
+    }, icon('eraser'));
 
     // ── Log area ─────────────────────────────────────────────────────────
     const log = h('div', { class: 'console-log' });
@@ -91,7 +128,7 @@ export default {
     const isNearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
     const hideJump = () => { jumpBtn.style.display = 'none'; };
 
-    // ── Input row ────────────────────────────────────────────────────────
+    // ── Composer ─────────────────────────────────────────────────────────
     const suggestBox = h('div', {
       class: 'suggestions', style: { display: 'none' },
       onmousedown: e => { if (e.target === suggestBox) e.preventDefault(); },
@@ -99,31 +136,46 @@ export default {
 
     const input = h('input', {
       class: 'input',
-      placeholder: 'Type a command… ( / for autocomplete, ↑↓ for history )',
+      placeholder: 'Run a command — / to autocomplete, ↑ for history',
       onkeydown: onInputKey,
       oninput: refreshSuggestions,
     });
 
-    const sendBtn = h('button', { class: 'btn primary icon-only', title: 'Send', onclick: send }, icon('send'));
+    const sendBtn = h('button', { class: 'btn primary send-btn', title: 'Send', 'aria-label': 'Send command', onclick: send }, icon('paperPlaneRight'));
 
     // ── Players rail ─────────────────────────────────────────────────────
-    const rail = h('div', { class: 'console-rail' });
+    const railList = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' } });
+    const railHeader = h('div', { class: 'rail-title' });
+    const rail = h('div', { class: 'console-rail' }, railHeader, railList, quickCommandsPanel());
+
+    function quickCommandsPanel() {
+      return h('div', { class: 'quick-commands' },
+        h('div', { class: 'rail-title' }, 'Quick commands'),
+        h('div', { class: 'quick-commands-chips' },
+          QUICK_COMMANDS.map(cmd => h('button', {
+            class: 'chip-cmd',
+            onclick: () => { input.value = cmd + ' '; input.focus(); },
+          }, cmd))));
+    }
 
     const layout = h('div', { class: 'console-layout' },
-      h('div', { class: 'console-main', style: { position: 'relative' } },
+      h('div', { class: 'console-main' },
         h('div', { class: 'console-toolbar' },
-          h('div', { class: 'chip-row' }, chips),
-          h('span', { class: 'spacer' }),
-          searchInput,
-          autoBtn,
-          h('button', {
-            class: 'btn sm ghost', title: 'Clear console',
-            onclick: async () => { await api.del('/api/console'); },
-          }, icon('eraser'), 'Clear')),
-        rconNotice,
-        log,
-        jumpBtn,
-        h('div', { class: 'console-input-row' }, suggestBox, input, sendBtn)),
+          seg,
+          searchField,
+          followBtn,
+          clearBtn),
+        h('hr', { class: 'rule-fade' }),
+        h('div', { style: { position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } },
+          rconNotice,
+          log,
+          jumpBtn),
+        h('hr', { class: 'rule-fade' }),
+        h('div', { class: 'console-input-row' },
+          suggestBox,
+          h('span', { class: 'prompt' }, '>'),
+          input,
+          sendBtn)),
       rail);
 
     el.append(layout);
@@ -131,20 +183,22 @@ export default {
 
     // ── Rendering ────────────────────────────────────────────────────────
     function lineNode(entry) {
-      const lvl = (entry.level ?? 'Unknown').toLowerCase();
-      const row = h('div', { class: `console-line lvl-${lvl}` });
+      const rawLvl = (entry.level ?? 'Unknown').toLowerCase();
+      const chat = isChat(entry);
+      const cls = chat ? 'chat' : rawLvl;
+      const row = h('div', { class: `console-line lvl-${cls}` });
 
       if (state.settings?.showTimestamp ?? true)
         row.append(h('span', { class: 't' }, fmtClock(entry.timestamp, { date: state.settings?.showDate })));
 
-      row.append(h('span', { class: 'lvl' }, lvl === 'input' ? '>' : lvl.toUpperCase()));
+      row.append(h('span', { class: 'lvl' }, cls === 'input' ? '>' : cls.toUpperCase()));
 
       const msg = h('span', { class: 'msg' });
-      const chat = CHAT_RE.exec(entry.message);
-      if (chat) {
+      const chatMatch = CHAT_RE.exec(entry.message);
+      if (chatMatch) {
         msg.append(
-          h('span', { class: 'chat-name', style: { color: usernameColor(chat[1]) } }, `<${chat[1]}>`),
-          entry.message.slice(chat[0].length - 1));
+          h('span', { class: 'chat-name', style: { color: usernameColor(chatMatch[1]) } }, `<${chatMatch[1]}>`),
+          entry.message.slice(chatMatch[0].length - 1));
       } else {
         msg.textContent = entry.message;
       }
@@ -153,10 +207,18 @@ export default {
     }
 
     function matches(entry) {
-      const lvl = (entry.level ?? 'Unknown').toLowerCase();
-      if (levelFilter !== 'all' && lvl !== levelFilter && lvl !== 'input') return false;
+      if (levelFilter !== 'all' && bucketOf(entry) !== levelFilter) return false;
       if (searchText && !entry.message.toLowerCase().includes(searchText)) return false;
       return true;
+    }
+
+    function syncCounts() {
+      const counts = { all: state.consoleEntries.length, info: 0, warn: 0, error: 0, chat: 0 };
+      for (const entry of state.consoleEntries) {
+        const b = bucketOf(entry);
+        if (b) counts[b]++;
+      }
+      for (const [id, { countEl }] of Object.entries(segItems)) countEl.textContent = String(counts[id] ?? 0);
     }
 
     function rebuildLog() {
@@ -165,10 +227,11 @@ export default {
       for (const entry of state.consoleEntries)
         if (matches(entry)) frag.append(lineNode(entry));
       log.append(frag);
+      syncCounts();
       if (frag.childElementCount === 0 && log.childElementCount === 0 && !state.consoleEntries.length) {
         const hasStream = state.status?.capabilities?.hasConsoleStream ?? true;
         log.append(h('div', { class: 'empty' },
-          icon('terminal'),
+          icon('terminalWindow'),
           h('div', { class: 'empty-title' }, hasStream ? 'Console is quiet' : 'No activity yet'),
           h('div', { class: 'empty-sub' }, hasStream
             ? 'Start the server to see live output here.'
@@ -184,11 +247,16 @@ export default {
     function flushPending() {
       rafQueued = false;
       if (!pendingLines.length) return;
-      const stick = autoScroll && isNearBottom();
+      const stick = follow && isNearBottom();
       const frag = document.createDocumentFragment();
-      for (const entry of pendingLines)
-        if (matches(entry)) frag.append(lineNode(entry));
+      for (const entry of pendingLines) {
+        if (!matches(entry)) continue;
+        const node = lineNode(entry);
+        node.classList.add('new'); // only newly-arrived lines animate — never the backlog
+        frag.append(node);
+      }
       pendingLines = [];
+      syncCounts();
       if (!frag.childElementCount) return;
 
       log.querySelector('.empty')?.remove();
@@ -289,19 +357,17 @@ export default {
 
     // ── Players rail ─────────────────────────────────────────────────────
     function syncRail() {
-      rail.innerHTML = '';
+      railList.innerHTML = '';
       if (!state.players.length) { rail.style.display = 'none'; return; }
       rail.style.display = '';
-      rail.append(h('div', { class: 'rail-title' }, `Online — ${state.players.length}`));
+      railHeader.replaceChildren('Online', h('span', { class: 'badge accent' }, String(state.players.length)));
       for (const p of state.players) {
         const avatar = h('span', { class: 'avatar', style: { background: p.colorHex } }, p.username[0].toUpperCase());
-        const img = h('img', {
-          src: `https://mc-heads.net/avatar/${encodeURIComponent(p.username)}/28`,
-          alt: '', loading: 'lazy',
-          onerror: function () { this.remove(); },
-        });
-        avatar.prepend(img);
-        rail.append(h('div', { class: 'rail-player' }, avatar, h('span', { class: 'ellipsis' }, p.username)));
+        railList.append(h('div', { class: 'rail-player' },
+          avatar,
+          h('div', { class: 'rp-info' },
+            h('div', { class: 'rp-name' }, p.username),
+            h('div', { class: 'rp-meta' }, `${timeAgo(p.joinedAt)} · ${p.ipAddress ?? '—'}`))));
       }
     }
 
@@ -332,5 +398,5 @@ function applyColorVars(el) {
   if (!s) return;
   el.style.setProperty('--lvl-info', s.colorInfo);
   el.style.setProperty('--lvl-warn', s.colorWarn);
-  el.style.setProperty('--lvl-error', s.colorError);
+  el.style.setProperty('--lvl-err', s.colorError);
 }

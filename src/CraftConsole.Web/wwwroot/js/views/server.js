@@ -3,13 +3,14 @@ import { h, icon, toast, confirmDialog, modal } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
-import { createServerControls } from '../components/server-controls.js';
 import { joinPath } from '../platform.js';
+import { openFolderPicker } from '../components/folder-picker.js';
 
 export default {
   id: 'server',
   title: 'Server',
-  icon: 'server',
+  subtitle: 'Profiles, JARs and Java runtimes',
+  icon: 'hardDrives',
 
   render(el) {
     let profiles = [];
@@ -37,6 +38,13 @@ export default {
       class: 'input',
       placeholder: joinPath(state.system?.defaultServerRoot ?? 'C:\\MinecraftServers', 'my-server'),
     });
+    const dirBrowseBtn = h('button', {
+      class: 'btn sm icon-only', title: 'Browse for a folder', 'aria-label': 'Browse for a folder',
+      onclick: async () => {
+        const picked = await openFolderPicker(dirInput.value.trim() || state.system?.defaultServerRoot);
+        if (picked) dirInput.value = picked;
+      },
+    }, icon('folder'));
     const dlBtn = h('button', { class: 'btn primary', onclick: startServerDownload }, icon('download'), 'Download JAR');
     const dlCancel = h('button', { class: 'btn sm ghost', style: { display: 'none' }, onclick: () => api.post('/api/setup/cancel/server') }, 'Cancel');
     const dlBar = h('div', { class: 'progress', style: { display: 'none' } }, h('div'));
@@ -45,8 +53,8 @@ export default {
 
     const manualCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
-        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
+        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
         fontSize: '12px', marginTop: '8px', marginBottom: '8px',
       },
     });
@@ -64,7 +72,9 @@ export default {
       typeGrid,
       h('div', { class: 'field-row', style: { marginTop: '14px' } },
         h('div', { class: 'field' }, h('label', {}, 'Version'), versionSelect),
-        h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Destination folder'), dirInput)),
+        h('div', { class: 'field', style: { flex: 2 } },
+          h('label', {}, 'Destination folder'),
+          h('div', { style: { display: 'flex', gap: '6px' } }, dirInput, dirBrowseBtn))),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, dlBtn),
       dlStatus,
       manualBox);
@@ -80,8 +90,8 @@ export default {
 
     const javaLinuxCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
-        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
+        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
         fontSize: '12px', marginTop: '8px', marginBottom: '8px',
       },
     });
@@ -122,7 +132,7 @@ export default {
       profileList.innerHTML = '';
       if (!profiles.length) {
         profileList.append(h('div', { class: 'empty' },
-          icon('server'),
+          icon('hardDrives'),
           h('div', { class: 'empty-title' }, 'No profiles yet'),
           h('div', { class: 'empty-sub' }, 'A profile bundles a server JAR, its folder, Java, and memory settings. Create one, or download a JAR below to get started.')));
         return;
@@ -131,7 +141,8 @@ export default {
         const isActive = activeId === p.id;
         const isRcon = p.mode === 'Rcon';
         const busy = ['Running', 'Starting', 'Stopping'].includes(state.status?.status);
-        profileList.append(h('div', { class: 'card profile-card', style: { padding: '13px 16px', background: 'var(--surface-2)' } },
+        const status = state.status?.status ?? 'Stopped';
+        profileList.append(h('div', { class: `card profile-card${isActive ? ' active' : ''}`, style: { padding: '13px 16px' } },
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
@@ -147,7 +158,7 @@ export default {
               onclick: () => activate(p.id),
             }, 'Set active') : null,
             isActive
-              ? createServerControls().el
+              ? h('span', { class: `status-pill ${status.toLowerCase()}` }, status)
               : h('button', {
                   class: 'btn sm primary',
                   title: busy
@@ -156,9 +167,9 @@ export default {
                   onclick: () => start(p.id),
                   disabled: busy,
                 }, icon('play'), isRcon ? 'Switch & connect' : 'Switch & start'),
-            h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openProfileEditor(p) }, icon('pencil')),
+            h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${p.name}”`, onclick: () => openProfileEditor(p) }, icon('pencilSimple')),
             h('button', {
-              class: 'btn sm icon-only danger', title: 'Delete',
+              class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${p.name}”`,
               onclick: async () => {
                 if (!await confirmDialog('Delete profile', `Delete profile “${p.name}”? Server files on disk are not touched.`, { danger: true, okLabel: 'Delete' })) return;
                 await api.del(`/api/profiles/${p.id}`);
@@ -382,7 +393,7 @@ export default {
       catch { javaInstalls = []; }
       javaList.innerHTML = '';
       if (!javaInstalls.length) {
-        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--text-3)', fontSize: '12.5px' } },
+        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--muted-2)', fontSize: '12.5px' } },
           'No Java runtimes found. Download one below — Minecraft 1.21+ needs Java 21.'));
         return;
       }

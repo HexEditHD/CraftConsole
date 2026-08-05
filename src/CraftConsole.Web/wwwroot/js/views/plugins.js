@@ -5,7 +5,8 @@ import { api } from '../api.js';
 export default {
   id: 'plugins',
   title: 'Plugins',
-  icon: 'box',
+  subtitle: 'Installed jars and their plugin.yml',
+  icon: 'puzzlePiece',
 
   render(el) {
     const folderLabel = h('span', { class: 'sub mono ellipsis', style: { maxWidth: '440px' } }, '');
@@ -15,7 +16,7 @@ export default {
       h('div', { class: 'view-head' },
         folderLabel,
         h('button', {
-          class: 'btn sm ghost icon-only', title: 'Copy folder path',
+          class: 'btn sm ghost icon-only', title: 'Copy folder path', 'aria-label': 'Copy folder path',
           onclick: () => {
             navigator.clipboard.writeText(folderLabel.textContent).then(() => toast('Path copied'));
           },
