@@ -13,16 +13,16 @@ const SWATCHES = {
 const DEFAULTS = { colorInfo: '#94A3B8', colorWarn: '#FB923C', colorError: '#F87171', colorPlayer: '#22C55E' };
 
 function tlsCard() {
-  const body = h('div', { class: 'tls-body' }, h('p', { class: 'muted small' }, 'Loading…'));
+  const body = h('div', { class: 'tls-body' }, h('p', { class: 'dimmer small' }, 'Loading…'));
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, 'TLS certificate'),
     body);
 
   const renderPinned = status => {
     body.replaceChildren(
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         `Certificate pinned via --cert-path — expires ${new Date(status.expiry).toLocaleDateString()}.`),
-      h('p', { class: 'muted small' }, 'Remove --cert-path to manage the certificate from here instead.'));
+      h('p', { class: 'dimmer small' }, 'Remove --cert-path to manage the certificate from here instead.'));
   };
 
   const renderManaged = status => {
@@ -57,9 +57,9 @@ function tlsCard() {
       submit);
 
     body.replaceChildren(
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         `${sourceLabel} — expires ${new Date(status.expiry).toLocaleDateString()}.`),
-      h('p', { class: 'muted small' },
+      h('p', { class: 'dimmer small' },
         'Self-signed certificates trigger a one-time browser warning; that’s expected. Upload your own certificate and key (e.g. from Let’s Encrypt or an internal CA) to replace it — it takes effect immediately, no restart.'),
       form);
   };
@@ -71,7 +71,7 @@ function tlsCard() {
       else renderManaged(status);
     } catch {
       body.replaceChildren(
-        h('p', { class: 'muted small' },
+        h('p', { class: 'dimmer small' },
           'Running in plain HTTP mode (started with --http). No TLS certificate is in use.'));
     }
   })();
@@ -82,7 +82,7 @@ function tlsCard() {
 const ROLES = ['Operator', 'Admin'];
 
 function usersCard() {
-  const body = h('div', {}, h('p', { class: 'muted small' }, 'Loading…'));
+  const body = h('div', {}, h('p', { class: 'dimmer small' }, 'Loading…'));
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' },
       'Users',
@@ -92,7 +92,7 @@ function usersCard() {
 
   async function load() {
     try { build((await api.get('/api/users')).users ?? []); }
-    catch (err) { body.replaceChildren(h('p', { class: 'muted small' }, err.message)); }
+    catch (err) { body.replaceChildren(h('p', { class: 'dimmer small' }, err.message)); }
   }
 
   function build(users) {
@@ -110,8 +110,8 @@ function usersCard() {
           },
         }, ROLES.map(r => h('option', { value: r, selected: u.role === r }, r)))),
         h('td', {}, u.enabled
-          ? h('span', { class: 'badge accent' }, 'Enabled')
-          : h('span', { class: 'badge warn' }, 'Disabled')),
+          ? h('span', { class: 'tag ok' }, 'Enabled')
+          : h('span', { class: 'tag warn' }, 'Disabled')),
         h('td', {}, h('div', { class: 'actions' },
           h('button', {
             class: 'btn sm',
@@ -219,7 +219,7 @@ export default {
   id: 'settings',
   title: 'Settings',
   subtitle: 'Panel, users and TLS certificate',
-  icon: 'slidersHorizontal',
+  icon: 'sliders',
 
   render(el) {
     const s = { ...state.settings };
@@ -273,7 +273,7 @@ export default {
         maxLines));
 
     const colorRow = (label, key) => {
-      const preview = h('span', { class: 'color-preview', style: { background: s[key] } });
+      const preview = h('span', { class: 'swatch-preview', style: { background: s[key] } });
       const custom = h('input', {
         type: 'color', value: s[key],
         style: { width: '26px', height: '26px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' },
@@ -281,7 +281,7 @@ export default {
       });
       return h('div', { class: 'switch-row' },
         h('div', { class: 'switch-label' }, label),
-        h('div', { class: 'swatch-row' },
+        h('div', { class: 'swatches' },
           preview,
           SWATCHES[key].map(hex => h('button', {
             class: 'swatch', title: hex, style: { background: hex },
@@ -317,10 +317,10 @@ export default {
 
     const aboutCard = h('div', { class: 'card' },
       h('div', { class: 'card-title' }, 'About'),
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         'CraftConsole — a local web panel for managing Minecraft servers. ',
         `Settings, profiles, tasks, and backups persist in ${state.system?.dataDirectory ?? 'the app data directory'}.`),
-      h('p', { class: 'muted small', style: { marginTop: '8px' } },
+      h('p', { class: 'dimmer small', style: { marginTop: '8px' } },
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
     // usersCard()/tlsCard() self-load over the API on construction — build
@@ -339,7 +339,7 @@ export default {
     ];
     let activeTab = 'console';
     const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--space-4)' } });
-    const body = h('div', { class: 'grid', style: { maxWidth: '660px' } });
+    const body = h('div', { class: 'settings-col' });
 
     function buildTabs() {
       tabsEl.innerHTML = '';

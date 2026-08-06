@@ -9,7 +9,7 @@ export default {
   id: 'players',
   title: 'Players',
   subtitle: () => `${state.players.length} online of a max ${state.status?.maxPlayers ?? 20}`,
-  icon: 'usersThree',
+  icon: 'users',
 
   render(el) {
     let tab = 'online';
@@ -17,7 +17,7 @@ export default {
     let bannedIps = { available: true, reason: null, entries: [] };
     let whitelist = { available: true, reason: null, entries: [], enabled: false };
 
-    const tabs = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--space-4)' } });
+    const tabs = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--s3)' } });
     const body = h('div');
     el.append(tabs, body);
 
@@ -107,9 +107,9 @@ export default {
             h('td', {}, avatarCell(p.username, p.colorHex)),
             h('td', { class: 'mono' }, p.ipAddress ?? '—'),
             h('td', {}, p.location ?? '—'),
-            h('td', { class: 'muted' }, timeAgo(p.joinedAt)),
+            h('td', { class: 'dim' }, timeAgo(p.joinedAt)),
             h('td', {}, h('div', { class: 'actions' },
-              h('button', { class: 'btn sm', onclick: () => act('kick', p.username, true, 'Kick reason (optional)') }, icon('userX'), 'Kick'),
+              h('button', { class: 'btn sm', onclick: () => act('kick', p.username, true, 'Kick reason (optional)') }, icon('userMinus'), 'Kick'),
               h('button', { class: 'btn sm danger', onclick: () => act('ban', p.username, true, 'Ban reason (optional)') }, icon('ban'), 'Ban'),
               h('button', {
                 class: 'btn sm danger',
@@ -135,7 +135,7 @@ export default {
           whitelistAction('add', { target: name }, `Whitelisted ${name}`);
         };
 
-        body.append(h('div', { class: 'card', style: { marginBottom: '14px' } },
+        body.append(h('div', { class: 'card', style: { marginBottom: 'var(--s3)' } },
           h('div', { class: 'switch-row', style: { paddingTop: 0 } },
             h('div', {},
               h('div', { class: 'switch-label' }, 'Whitelist enforcement'),
@@ -160,7 +160,7 @@ export default {
               class: 'btn sm ghost', disabled: !serverUp,
               title: 'Re-read whitelist.json on the server',
               onclick: () => whitelistAction('reload', null, 'Whitelist reloaded'),
-            }, icon('refresh'), 'Reload')),
+            }, icon('restart'), 'Reload')),
           !serverUp
             ? h('div', { class: 'hint', style: { marginTop: '10px' } },
                 'Start the server to change the whitelist — changes go through it so whitelist.json stays in sync.')
@@ -182,7 +182,7 @@ export default {
             h('th', {}, 'Player'), h('th', {}, 'UUID'), h('th', {}))),
           h('tbody', {}, whitelist.entries.map(entry => h('tr', {},
             h('td', {}, avatarCell(entry.name, usernameColor(entry.name))),
-            h('td', { class: 'mono muted small' }, entry.uuid || '—'),
+            h('td', { class: 'mono dimmer small' }, entry.uuid || '—'),
             h('td', {}, h('div', { class: 'actions' },
               h('button', {
                 class: 'btn sm danger', disabled: !serverUp,
@@ -210,10 +210,10 @@ export default {
             h('th', {}, 'Player'), h('th', {}, 'Reason'), h('th', {}, 'Source'),
             h('th', {}, 'Created'), h('th', {}))),
           h('tbody', {}, banned.entries.map(b => h('tr', {},
-            h('td', {}, avatarCell(b.name, 'var(--color-neutral-800)')),
-            h('td', { class: 'text-2' }, b.reason || '—'),
-            h('td', { class: 'muted' }, b.source || '—'),
-            h('td', { class: 'muted small' }, b.created || '—'),
+            h('td', {}, avatarCell(b.name, 'var(--surface-3)')),
+            h('td', { class: 'dim' }, b.reason || '—'),
+            h('td', { class: 'dim' }, b.source || '—'),
+            h('td', { class: 'dimmer small' }, b.created || '—'),
             h('td', {}, h('div', { class: 'actions' },
               h('button', { class: 'btn sm', onclick: () => act('pardon', b.name, false, 'Pardon') }, 'Pardon')))))))));
         return;
@@ -234,9 +234,9 @@ export default {
           h('th', {}, 'Created'), h('th', {}))),
         h('tbody', {}, bannedIps.entries.map(b => h('tr', {},
           h('td', { class: 'mono' }, b.ip),
-          h('td', { class: 'text-2' }, b.reason || '—'),
-          h('td', { class: 'muted' }, b.source || '—'),
-          h('td', { class: 'muted small' }, b.created || '—'),
+          h('td', { class: 'dim' }, b.reason || '—'),
+          h('td', { class: 'dim' }, b.source || '—'),
+          h('td', { class: 'dimmer small' }, b.created || '—'),
           h('td', {}, h('div', { class: 'actions' },
             h('button', { class: 'btn sm', onclick: () => act('pardon-ip', b.ip, false, 'Pardon IP') }, 'Pardon')))))))));
     }

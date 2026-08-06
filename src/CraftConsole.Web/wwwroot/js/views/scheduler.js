@@ -59,7 +59,7 @@ export default {
   id: 'scheduler',
   title: 'Tasks',
   subtitle: 'Scheduled triggers and actions',
-  icon: 'clockCountdown',
+  icon: 'clock',
 
   render(el) {
     let tasks = [];

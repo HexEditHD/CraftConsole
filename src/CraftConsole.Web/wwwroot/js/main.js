@@ -1,5 +1,5 @@
-// App shell: header (brand, profile, vitals, issues bell, server controls),
-// icon rail, hash router, EULA banner.
+// App shell for BLUEPRINT: ruled sidebar, drawing title block carrying
+// the readings and server controls in its own cells, hash router.
 import { h, icon, toast } from './ui.js';
 import { api } from './api.js';
 import { connectSse, on } from './bus.js';
@@ -24,99 +24,95 @@ const ROUTES = [dashboard, consoleView, players, issues, server, plugins, editor
 // action on them would 403 for an Operator, so there's nothing useful to show.
 const ADMIN_ONLY_VIEWS = new Set(['server', 'plugins', 'editor', 'scheduler', 'settings']);
 
-// Rail groups. Route ids stay as they always were (dashboard/scheduler/editor);
-// only the titles/labels shown to the user changed (Health/Tasks/Files).
-const RAIL_GROUPS = [
-  { kicker: 'Operate', ids: ['console', 'dashboard', 'players', 'issues'] },
-  { kicker: 'Configure', ids: ['server', 'plugins', 'editor'] },
-  { kicker: 'Automate', ids: ['backups', 'scheduler', 'settings'] },
+// Route ids stay as they always were (dashboard/scheduler/editor); only the
+// labels shown to the user differ (Health/Tasks/Files).
+const NAV_GROUPS = [
+  { label: 'Operate',   ids: ['console', 'dashboard', 'players', 'issues'] },
+  { label: 'Configure', ids: ['server', 'plugins', 'editor'] },
+  { label: 'Automate',  ids: ['backups', 'scheduler', 'settings'] },
 ];
 
-// Phone bottom tab bar. The handoff's fixed five (Console, Health, Players,
-// Server, Settings) assumes an admin — Server and Settings 403 for an
-// Operator, so an Operator gets the next-most-useful non-gated destinations
-// instead (Issues, Backups) rather than two dead tabs.
-const PHONE_TABS_ADMIN = ['console', 'dashboard', 'players', 'server', 'settings'];
-const PHONE_TABS_OPERATOR = ['console', 'dashboard', 'players', 'issues', 'backups'];
+// The phone bar can't hold ten destinations. Admins get the canonical five;
+// an Operator would have two dead admin-only tabs there, so they get the
+// next-most-useful non-gated destinations instead.
+const PHONE_ADMIN    = ['console', 'dashboard', 'players', 'server', 'settings'];
+const PHONE_OPERATOR = ['console', 'dashboard', 'players', 'issues', 'backups'];
 
 let activeCleanup = null;
-let railIssueBadge = null;
-let bellIssueBadge = null;
-let phoneIssueBadge = null;
+let navBadges = [];
+let vitals, controls;
 
-// ── Icon rail ───────────────────────────────────────────────────────────
-function buildRail() {
-  const rail = document.getElementById('rail');
-  rail.innerHTML = '';
+// ── Sidebar ─────────────────────────────────────────────────────────────
+function buildNav() {
+  const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  navBadges = [];
   const admin = isAdmin();
 
-  for (const group of RAIL_GROUPS) {
-    const routesInGroup = group.ids
+  for (const group of NAV_GROUPS) {
+    const routes = group.ids
       .map(id => ROUTES.find(r => r.id === id))
-      .filter(route => route && (!ADMIN_ONLY_VIEWS.has(route.id) || admin));
+      .filter(r => r && (!ADMIN_ONLY_VIEWS.has(r.id) || admin));
 
-    if (!routesInGroup.length) continue; // e.g. Configure is entirely admin-only
+    if (!routes.length) continue; // Configure is entirely admin-only
 
-    rail.append(h('div', { class: 'rail-kicker' }, group.kicker));
+    nav.append(h('div', { class: 'nav-group-label' }, group.label));
 
-    for (const route of routesInGroup) {
+    for (const route of routes) {
       const item = h('button', {
-        class: 'rail-item',
-        id: `rail-${route.id}`,
+        class: 'nav-item', id: `nav-${route.id}`,
         onclick: () => { location.hash = `#/${route.id}`; },
-      },
-        icon(route.icon),
-        h('span', { class: 'rail-label' }, route.title));
+      }, icon(route.icon), h('span', {}, route.title));
 
       if (route.id === 'issues') {
-        railIssueBadge = h('span', { class: 'count-badge', style: { display: 'none' } }, '0');
-        item.append(railIssueBadge);
+        const badge = h('span', { class: 'count', style: { display: 'none' } }, '0');
+        navBadges.push(badge);
+        item.append(badge);
       }
-      rail.append(h('div', { class: 'rail-item-wrap' }, item));
+      nav.append(item);
     }
   }
 }
 
-function updateIssueBadge() {
-  const count = state.issues.length;
-  const text = count > 99 ? '99+' : String(count);
-  for (const badge of [railIssueBadge, bellIssueBadge, phoneIssueBadge]) {
-    if (!badge) continue;
-    badge.textContent = text;
-    badge.style.display = count > 0 ? '' : 'none';
-  }
-}
-
-// ── Phone tab bar ───────────────────────────────────────────────────────
-function buildPhoneTabs() {
-  const nav = document.getElementById('phone-tabs');
+function buildPhoneNav() {
+  const nav = document.getElementById('mobile-nav');
   nav.innerHTML = '';
-  phoneIssueBadge = null;
-  const ids = isAdmin() ? PHONE_TABS_ADMIN : PHONE_TABS_OPERATOR;
+  const ids = isAdmin() ? PHONE_ADMIN : PHONE_OPERATOR;
 
   for (const id of ids) {
     const route = ROUTES.find(r => r.id === id);
     if (!route) continue;
     const item = h('button', {
-      class: 'phone-tab',
-      id: `phone-tab-${route.id}`,
+      class: 'mnav-item', id: `mnav-${route.id}`,
       onclick: () => { location.hash = `#/${route.id}`; },
-    },
-      icon(route.icon),
-      h('span', { class: 'rail-label' }, route.title));
+    }, icon(route.icon), h('span', { class: 'lbl' }, route.title));
 
     if (route.id === 'issues') {
-      phoneIssueBadge = h('span', { class: 'count-badge', style: { display: 'none' } }, '0');
-      item.append(phoneIssueBadge);
+      const badge = h('span', { class: 'count', style: { display: 'none' } }, '0');
+      navBadges.push(badge);
+      item.append(badge);
     }
     nav.append(item);
   }
 }
 
+function syncIssueBadges() {
+  const count = state.issues.length;
+  const text = count > 99 ? '99+' : String(count);
+  for (const b of navBadges) {
+    b.textContent = text;
+    b.style.display = count > 0 ? '' : 'none';
+  }
+}
+
 // ── Router ──────────────────────────────────────────────────────────────
-function route() {
+function currentView() {
   const id = location.hash.replace(/^#\//, '') || 'dashboard';
-  let view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+  return ROUTES.find(r => r.id === id) ?? ROUTES[0];
+}
+
+function route() {
+  let view = currentView();
 
   if (ADMIN_ONLY_VIEWS.has(view.id) && !isAdmin()) {
     toast('That page needs an admin account.', 'err');
@@ -127,9 +123,9 @@ function route() {
   activeCleanup?.();
   activeCleanup = null;
 
-  document.querySelectorAll('.rail-item, .phone-tab').forEach(el => el.classList.remove('active'));
-  document.getElementById(`rail-${view.id}`)?.classList.add('active');
-  document.getElementById(`phone-tab-${view.id}`)?.classList.add('active');
+  document.querySelectorAll('.nav-item, .mnav-item').forEach(el => el.classList.remove('active'));
+  document.getElementById(`nav-${view.id}`)?.classList.add('active');
+  document.getElementById(`mnav-${view.id}`)?.classList.add('active');
 
   document.getElementById('page-title').textContent = view.title;
   syncSubtitle(view);
@@ -138,65 +134,39 @@ function route() {
   outlet.innerHTML = '';
   activeCleanup = view.render(outlet) ?? null;
 
-  // Retrigger the entrance animation on every route change — removing and
-  // re-adding the class (with a reflow between) restarts it even when the
-  // class name didn't change from the previous route.
-  outlet.classList.remove('view-enter');
+  // Restart the entrance animation on every route change — removing and
+  // re-adding with a reflow between restarts it even when the class didn't
+  // change from the previous route.
+  outlet.classList.remove('view-in');
   void outlet.offsetWidth;
-  outlet.classList.add('view-enter');
+  outlet.classList.add('view-in');
 }
 
 function syncSubtitle(view) {
-  const el = document.getElementById('page-subtitle');
-  if (!view) return;
+  const el = document.getElementById('page-sub');
   el.textContent = typeof view.subtitle === 'function' ? view.subtitle() : (view.subtitle ?? '');
 }
 
-function currentView() {
-  const id = location.hash.replace(/^#\//, '') || 'dashboard';
-  return ROUTES.find(r => r.id === id) ?? ROUTES[0];
-}
-
-// ── Header ──────────────────────────────────────────────────────────────
-let vitals, controls;
-
-function buildHeader() {
+// ── Masthead ────────────────────────────────────────────────────────────
+function buildTopbar() {
   document.getElementById('brand-icon').append(icon('cube'));
-  document.getElementById('profile-caret').append(icon('caretDown'));
-  document.getElementById('profile-btn').addEventListener('click', () => { location.hash = '#/server'; });
-
-  document.getElementById('bell-icon').append(icon('bell'));
-  bellIssueBadge = document.getElementById('issues-badge');
-  document.getElementById('issues-bell').addEventListener('click', () => { location.hash = '#/issues'; });
 
   vitals = createVitals();
-  document.getElementById('vitals-slot').replaceWith(vitals.el);
-  vitals.el.id = 'vitals-slot';
+  document.getElementById('readings').replaceWith(vitals.el);
+  vitals.el.id = 'readings';
 
   controls = createServerControls();
-  document.getElementById('server-toggle-slot').append(controls.el);
+  document.getElementById('controls').replaceWith(controls.el);
+  controls.el.id = 'controls';
 
-  syncHeader();
+  syncShell();
 }
 
-function syncHeader() {
-  const s = state.status;
-  const status = s?.status ?? 'Stopped';
-
-  const dot = document.getElementById('profile-dot');
-  dot.className = `profile-dot${status === 'Running' ? ' running' : ''}`;
-
-  document.getElementById('profile-name').textContent = s?.profile?.name ?? 'No profile';
-
-  const meta = document.getElementById('profile-meta');
-  meta.textContent = s?.profile
-    ? (s.profile.mode === 'Rcon' ? 'RCON' : [s.profile.type, s.profile.minecraftVersion].filter(Boolean).join(' '))
-    : '';
-
+function syncShell() {
   vitals?.sync();
   controls?.sync();
-  updateIssueBadge();
-  syncEulaBanner(s?.eulaRequired === true);
+  syncIssueBadges();
+  syncEulaBanner(state.status?.eulaRequired === true);
   syncSubtitle(currentView());
 }
 
@@ -210,7 +180,7 @@ function syncEulaBanner(required) {
   if (existing || eulaDismissed) return;
 
   slot.append(h('div', { class: 'banner' },
-    icon('warningCircle'),
+    icon('warning'),
     h('span', {}, 'Mojang requires accepting the Minecraft EULA before this server can run.'),
     h('span', { class: 'spacer' }),
     h('button', {
@@ -229,18 +199,19 @@ function syncEulaBanner(required) {
     }, 'Later')));
 }
 
-// ── Connection indicator ────────────────────────────────────────────────
+// ── Connection ──────────────────────────────────────────────────────────
 function syncConn() {
-  const dot = document.getElementById('conn-dot');
-  dot.className = `conn-dot ${state.connected ? 'ok' : 'bad'}`;
+  const dot = document.getElementById('conn');
+  const label = document.getElementById('conn-label');
+  dot.className = `conn ${state.connected ? 'ok' : 'bad'}`;
   dot.title = state.connected ? 'Live connection to CraftConsole' : 'Reconnecting…';
+  label.textContent = state.connected ? 'Live' : 'Reconnecting…';
 }
 
 // ── Sign out ────────────────────────────────────────────────────────────
 function buildSignOut() {
-  const btn = document.getElementById('sign-out-btn');
+  const btn = document.getElementById('signout');
   btn.append(icon('power'));
-  btn.setAttribute('aria-label', 'Sign out');
   if (state.session) btn.title = `Signed in as ${state.session.username} (${state.session.role}) — click to sign out`;
   btn.addEventListener('click', async () => {
     try { await api.post('/api/auth/logout'); } catch { /* clearing the cookie server-side is best-effort */ }
@@ -251,16 +222,17 @@ function buildSignOut() {
 // ── Boot ────────────────────────────────────────────────────────────────
 (async function boot() {
   await initStore();
-  buildRail();
-  buildPhoneTabs();
-  buildHeader();
+  buildNav();
+  buildPhoneNav();
+  buildTopbar();
   buildSignOut();
-  updateIssueBadge();
+  syncIssueBadges();
+  syncConn();
 
-  on('store:status', syncHeader);
-  on('store:players', syncHeader);
+  on('store:status', syncShell);
+  on('store:players', syncShell);
   on('store:metrics', () => vitals?.sync());
-  on('store:issues', updateIssueBadge);
+  on('store:issues', syncIssueBadges);
   on('store:conn', syncConn);
 
   connectSse();

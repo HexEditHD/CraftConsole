@@ -6,7 +6,7 @@ export default {
   id: 'plugins',
   title: 'Plugins',
   subtitle: 'Installed jars and their plugin.yml',
-  icon: 'puzzlePiece',
+  icon: 'puzzle',
 
   render(el) {
     const folderLabel = h('span', { class: 'sub mono ellipsis', style: { maxWidth: '440px' } }, '');

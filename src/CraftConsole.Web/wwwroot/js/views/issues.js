@@ -8,7 +8,7 @@ export default {
   id: 'issues',
   title: 'Issues',
   subtitle: 'Warnings and errors distilled from the log',
-  icon: 'warningCircle',
+  icon: 'warning',
 
   render(el) {
     let filter = 'all';

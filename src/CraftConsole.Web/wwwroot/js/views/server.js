@@ -10,7 +10,7 @@ export default {
   id: 'server',
   title: 'Server',
   subtitle: 'Profiles, JARs and Java runtimes',
-  icon: 'hardDrives',
+  icon: 'drives',
 
   render(el) {
     let profiles = [];
