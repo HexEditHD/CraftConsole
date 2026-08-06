@@ -53,9 +53,9 @@ export default {
 
     const manualCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
-        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const manualLink = h('a', { target: '_blank', rel: 'noopener noreferrer' }, 'Official website');
@@ -90,9 +90,9 @@ export default {
 
     const javaLinuxCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
-        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const javaLinuxHint = h('div', { style: { display: 'none', marginTop: '12px' } },
@@ -146,9 +146,9 @@ export default {
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
-              isRcon ? h('span', { class: 'badge info' }, 'RCON') : h('span', { class: 'badge' }, p.type),
-              !isRcon && p.minecraftVersion ? h('span', { class: 'badge info' }, p.minecraftVersion) : null,
-              isActive ? h('span', { class: 'badge accent' }, 'ACTIVE') : null),
+              isRcon ? h('span', { class: 'tag' }, 'RCON') : h('span', { class: 'tag' }, p.type),
+              !isRcon && p.minecraftVersion ? h('span', { class: 'tag' }, p.minecraftVersion) : null,
+              isActive ? h('span', { class: 'tag live' }, 'ACTIVE') : null),
             h('div', { class: 'meta' }, isRcon
               ? `${p.rconHost}:${p.rconPort}`
               : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
@@ -343,7 +343,7 @@ export default {
         },
           h('div', { class: 'type-name' },
             t.displayName,
-            h('span', { class: `badge ${t.tag === 'RECOMMENDED' ? 'accent' : t.tag === 'OFFICIAL' ? 'info' : ''}` }, t.tag)),
+            h('span', { class: `tag ${t.tag === 'RECOMMENDED' ? 'live' : ''}` }, t.tag)),
           h('div', { class: 'type-desc' }, t.description)));
       }
       const manual = selectedType && !selectedType.hasAutoDownload;
@@ -393,7 +393,7 @@ export default {
       catch { javaInstalls = []; }
       javaList.innerHTML = '';
       if (!javaInstalls.length) {
-        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--muted-2)', fontSize: '12.5px' } },
+        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--ink-low)', fontSize: 'var(--t-sm)' } },
           'No Java runtimes found. Download one below — Minecraft 1.21+ needs Java 21.'));
         return;
       }
@@ -402,7 +402,7 @@ export default {
           h('div', {},
             h('div', { class: 'switch-label' }, j.label),
             h('div', { class: 'switch-desc mono' }, j.executablePath)),
-          h('span', { class: 'badge accent' }, `Java ${j.majorVersion}`)));
+          h('span', { class: 'tag live' }, `Java ${j.majorVersion}`)));
       }
     }
 

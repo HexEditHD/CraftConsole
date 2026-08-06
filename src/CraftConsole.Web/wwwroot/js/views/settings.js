@@ -338,7 +338,7 @@ export default {
       ['tls', 'TLS & about'],
     ];
     let activeTab = 'console';
-    const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--space-4)' } });
+    const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--s4)' } });
     const body = h('div', { class: 'settings-col' });
 
     function buildTabs() {

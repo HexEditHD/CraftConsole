@@ -55,11 +55,11 @@ export default {
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               job.name,
-              h('span', { class: 'badge' }, job.compression),
-              enabled ? null : h('span', { class: 'badge warn' }, 'Disabled')),
+              h('span', { class: 'tag' }, job.compression),
+              enabled ? null : h('span', { class: 'tag warn' }, 'Disabled')),
             h('div', { class: 'meta' },
               `${job.sourcePaths.length} source${job.sourcePaths.length === 1 ? '' : 's'} → ${job.destinationPath}`),
-            h('div', { class: 'meta muted' },
+            h('div', { class: 'meta dimmer' },
               job.lastRun ? `Last run ${timeAgo(job.lastRun)}` : 'Never run')),
           h('div', { class: 'actions' },
             h('button', {
@@ -146,7 +146,7 @@ export default {
             h('label', {}, 'Restore into'), target,
             h('span', { class: 'hint' },
               'Files in the archive overwrite files of the same name. Anything else in the directory is left untouched.')),
-          h('p', { class: 'muted small' },
+          h('p', { class: 'dimmer small prose' },
             'Consider running this job once before restoring, so the current state is recoverable.')),
         actions: [
           { label: 'Cancel', kind: 'ghost' },

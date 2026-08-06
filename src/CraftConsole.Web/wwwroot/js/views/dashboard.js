@@ -56,7 +56,7 @@ export default {
       const colour =
         st === 'Running' ? 'var(--good)'
         : st === 'Crashed' ? 'var(--bad)'
-        : st === 'Stopped' ? 'var(--fg-mid)' : 'var(--warn)';
+        : st === 'Stopped' ? 'var(--ink-mid)' : 'var(--warn)';
       status.value.textContent = st;
       status.value.style.color = colour;
       status.fill.style.width = '100%';
@@ -74,7 +74,8 @@ export default {
       players.sub.textContent = state.players.slice(0, 4).map(p => p.username).join(', ')
         || (st === 'Running' ? 'Nobody online' : '');
       players.fill.style.width = `${max > 0 ? Math.min(state.players.length / max * 100, 100) : 0}%`;
-      players.fill.style.background = 'var(--amber)';
+      // --blue is this sheet's grease-pencil amber; players online is live state.
+      players.fill.style.background = 'var(--blue)';
     }
 
     function syncMetrics() {

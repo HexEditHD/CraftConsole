@@ -70,7 +70,7 @@ export function openFolderPicker(startPath) {
       body: h('div', { class: 'browse-picker' },
         h('div', { class: 'browse-toolbar' }, upBtn, pathLabel),
         list,
-        h('div', { class: 'field', style: { marginTop: 'var(--space-3)', marginBottom: 0 } },
+        h('div', { class: 'field', style: { marginTop: 'var(--s3)', marginBottom: 0 } },
           h('label', {}, 'New folder name (optional)'),
           newName,
           h('span', { class: 'hint' }, 'Leave blank to select the folder shown above.'))),

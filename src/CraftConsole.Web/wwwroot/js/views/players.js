@@ -210,7 +210,7 @@ export default {
             h('th', {}, 'Player'), h('th', {}, 'Reason'), h('th', {}, 'Source'),
             h('th', {}, 'Created'), h('th', {}))),
           h('tbody', {}, banned.entries.map(b => h('tr', {},
-            h('td', {}, avatarCell(b.name, 'var(--surface-3)')),
+            h('td', {}, avatarCell(b.name, 'var(--sheet-3)')),
             h('td', { class: 'dim' }, b.reason || '—'),
             h('td', { class: 'dim' }, b.source || '—'),
             h('td', { class: 'dimmer small' }, b.created || '—'),

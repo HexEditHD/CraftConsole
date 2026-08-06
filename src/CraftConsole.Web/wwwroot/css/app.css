@@ -372,6 +372,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tag.ok   { color: var(--good); border-color: var(--good); background: var(--sheet); }
 .tag.warn { color: var(--warn); border-color: var(--warn); background: var(--sheet); }
 .tag.bad  { color: var(--bad);  border-color: var(--bad);  background: var(--sheet); }
+/* The one amber tag: the active profile, the recommended build, the Java
+   in use. Same rule as everywhere else — amber means live, not "notable". */
+.tag.live { color: var(--blue); border-color: var(--blue); background: var(--blue-wash); }
 
 /* Segmented control — a drawn selector strip */
 .seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--rule-firm); border-radius: var(--r); background: var(--sheet); overflow: hidden; }
@@ -580,6 +583,146 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .swatch-preview { width: 20px; height: 20px; border-radius: var(--r); border: 1px solid var(--rule-firm); }
 
 /* ══════════════════════════════════════════════════════════════════════
+   Sheet furniture
+   Shared by the screens outside the original slice. These were carrying
+   Nocturne-era class names that this stylesheet never defined, so they
+   rendered as bare blocks — headers stacked instead of sitting on a row.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* The strip above a screen's content: filters left, actions right. */
+.view-head { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s3); min-height: 26px; }
+.sub { font-family: var(--f-sans); font-size: var(--t-xs); color: var(--ink-low); }
+.actions { display: flex; align-items: center; gap: var(--s1); flex-shrink: 0; }
+.grid { display: grid; gap: var(--s2); }
+.inline { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.tls-body { display: flex; flex-direction: column; gap: var(--s2); }
+
+/* A listed part: its switch, what it is, its controls. Backup jobs and
+   server profiles are the same shape, so they share one rule. */
+.profile-card { display: flex; align-items: center; gap: var(--s3); }
+.profile-card .info { flex: 1; min-width: 0; }
+.profile-card .name { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; font-weight: 600; }
+.profile-card .meta { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-card .meta.dimmer { color: var(--ink-low); }
+/* The active profile is the part marked up on the print — its corner ticks
+   go amber too, so the callout reads as one gesture rather than a border. */
+.profile-card.active { border-color: var(--blue); }
+.profile-card.active::before, .profile-card.active::after { border-color: var(--blue); }
+
+/* Status of the active profile: a drawn callout, not a button. */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px var(--s2);
+  border: 1px solid var(--rule-firm); border-radius: var(--r);
+  font-family: var(--f-mono); font-size: var(--t-xs);
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-mid); white-space: nowrap;
+}
+.status-pill.running  { color: var(--good); border-color: var(--good); }
+.status-pill.crashed  { color: var(--bad);  border-color: var(--bad);  }
+.status-pill.starting, .status-pill.stopping { color: var(--warn); border-color: var(--warn); }
+
+/* Progress is a rule that fills, not a rounded pill. */
+.progress { flex: 1; min-width: 90px; height: 5px; background: var(--sheet-3); border: 1px solid var(--rule); overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--blue); transition: width var(--base); }
+.dl-status { display: flex; align-items: center; gap: var(--s2); min-height: 22px; font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid); }
+
+/* Server type chooser — parts laid out on the sheet, one selected. */
+.type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: var(--s2); margin-bottom: var(--s3); }
+.type-card {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  padding: var(--s2) var(--s3);
+  background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  color: var(--ink); cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+.type-card:hover { background: var(--sheet-2); border-color: var(--n-300); }
+.type-card.selected { background: var(--blue-wash); border-color: var(--blue); }
+.type-name { display: flex; align-items: center; gap: var(--s2); font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 700; }
+.type-desc { font-family: var(--f-sans); font-size: var(--t-xs); color: var(--ink-low); line-height: 1.45; }
+
+.setup-split { display: flex; flex-direction: column; gap: var(--s3); }
+
+/* Folder picker */
+.browse-picker { display: flex; flex-direction: column; gap: var(--s2); }
+.browse-toolbar { display: flex; align-items: center; gap: var(--s2); }
+.browse-path { flex: 1; min-width: 0; font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-list { height: 230px; overflow-y: auto; background: var(--sheet-2); border: 1px solid var(--rule-firm); border-radius: var(--r); }
+.browse-row { display: flex; align-items: center; gap: var(--s2); padding: 4px var(--s2); border-bottom: 1px solid var(--rule); cursor: pointer; font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid); }
+.browse-row:last-child { border-bottom: none; }
+.browse-row:hover { background: var(--sheet-3); color: var(--ink); }
+.browse-row .icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--ink-low); }
+.browse-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Files
+   The drawing index on the left, the sheet being marked up on the right.
+   ══════════════════════════════════════════════════════════════════════ */
+.editor-layout { display: flex; gap: var(--s3); height: 100%; min-height: 0; }
+
+.file-tree {
+  width: 236px; flex-shrink: 0; overflow-y: auto; padding: var(--s2);
+  background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+}
+.tree-node.collapsed > .tree-children { display: none; }
+/* Leader lines down the index, the way a drawing tree is ruled. */
+.tree-children { margin-left: var(--s3); padding-left: var(--s1); border-left: 1px solid var(--rule); }
+.tree-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 2px var(--s1); border-radius: var(--r); cursor: pointer;
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid);
+  transition: background var(--fast), color var(--fast);
+}
+.tree-row:hover { background: var(--sheet-3); color: var(--ink); }
+.tree-row .icon { width: 13px; height: 13px; flex-shrink: 0; color: var(--ink-low); transition: transform var(--fast); }
+.tree-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row .size { flex-shrink: 0; font-size: 9.5px; color: var(--ink-low); }
+/* The file currently being marked up. */
+.tree-row.open-file { background: var(--blue-wash); color: var(--blue); }
+.tree-row.open-file .icon { color: var(--blue); }
+
+.editor-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r); overflow: hidden; }
+.editor-tabs { display: flex; overflow-x: auto; min-height: 29px; background: var(--sheet-2); border-bottom: 1px solid var(--rule-firm); }
+.editor-tab {
+  display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+  padding: 5px var(--s3);
+  background: transparent; border: none; border-right: 1px solid var(--rule);
+  color: var(--ink-mid); font-family: var(--f-mono); font-size: var(--t-xs); cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.editor-tab:hover { background: var(--sheet-3); color: var(--ink); }
+/* The active tab breaks the rule beneath it, joining the sheet below. */
+.editor-tab.active { background: var(--sheet); color: var(--ink); box-shadow: inset 0 -1px 0 var(--sheet); }
+.dirty-dot { width: 6px; height: 6px; flex-shrink: 0; background: var(--blue); }
+.editor-tab .close { display: inline-flex; opacity: .5; }
+.editor-tab .close:hover { opacity: 1; color: var(--bad); }
+.editor-tab .close .icon { width: 11px; height: 11px; }
+
+.editor-body { flex: 1; min-height: 0; display: flex; }
+/* The file being edited sits on the same ruled grid as the log — the one
+   surface treatment this language reuses for live content. background-
+   attachment:local so the rules scroll with the text, like real paper. */
+.editor-textarea {
+  flex: 1; width: 100%; resize: none; outline: none; border: none;
+  padding: var(--s2) var(--s3);
+  background-color: var(--sheet-2);
+  background-image: linear-gradient(to right,  var(--grid) 1px, transparent 1px),
+                    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: var(--grid-pitch) var(--grid-pitch);
+  background-attachment: local;
+  color: var(--ink);
+  font-family: var(--f-mono); font-size: var(--t-sm); line-height: 1.55;
+  tab-size: 2;
+}
+.editor-textarea:disabled { color: var(--ink-low); }
+.editor-status {
+  display: flex; align-items: center; gap: var(--s2); min-height: 30px;
+  padding: var(--s1) var(--s2);
+  background: var(--sheet-2); border-top: 1px solid var(--rule-firm);
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-low);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
    Responsive
    ══════════════════════════════════════════════════════════════════════ */
 #mobile-nav { display: none; }
@@ -609,6 +752,14 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   .console-layout { flex-direction: column; }
   .rail-panel { width: 100%; max-height: 170px; }
   .tiles { grid-template-columns: repeat(2, 1fr); }
+
+  /* The drawing index goes above the sheet rather than beside it. */
+  .editor-layout { flex-direction: column; }
+  .file-tree { width: 100%; max-height: 190px; }
+  /* A listed part wraps its controls under its name instead of squeezing. */
+  .profile-card { flex-wrap: wrap; }
+  .profile-card .actions { margin-left: auto; }
+  .view-head { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
