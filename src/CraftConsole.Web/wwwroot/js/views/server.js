@@ -311,14 +311,18 @@ export default {
               const req = isNew
                 ? api.post('/api/profiles', body)
                 : api.put(`/api/profiles/${profile.id}`, body);
-              req.then(async created => {
+              // Returned so modal() awaits the whole chain — the RCON password
+              // is a second request that only runs after the profile itself is
+              // saved, and without the return the dialog closed before it had
+              // even been sent, taking the typed password with it.
+              return req.then(async created => {
                 if (mode === 'Rcon' && password) {
                   const id = isNew ? created.id : profile.id;
                   await api.put(`/api/profiles/${id}/rcon-password`, { password });
                 }
                 toast(isNew ? 'Profile created' : 'Profile saved');
                 loadProfiles();
-              }).catch(err => toast(err.message, 'err'));
+              }).catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],

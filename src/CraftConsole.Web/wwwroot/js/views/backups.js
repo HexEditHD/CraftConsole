@@ -217,8 +217,8 @@ export default {
                 compression: f.compression.value,
               };
               const req = isNew ? api.post('/api/backups', body) : api.put(`/api/backups/${job.id}`, body);
-              req.then(() => { toast(isNew ? 'Job created' : 'Job saved'); load(); })
-                 .catch(err => toast(err.message, 'err'));
+              return req.then(() => { toast(isNew ? 'Job created' : 'Job saved'); load(); })
+                 .catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],

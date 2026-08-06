@@ -150,9 +150,13 @@ function usersCard() {
           onClick: () => {
             if (!username.value.trim()) { toast('A username is required.', 'err'); return false; }
             if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
-            api.post('/api/users', { username: username.value.trim(), password: password.value, role: role.value })
+            // Returned so modal() awaits it: a rejected request resolves to
+            // false, which keeps the dialog open with what was typed still in
+            // it. Without the return the dialog closed on the spot and a
+            // rejection (e.g. the username is taken) threw the entry away.
+            return api.post('/api/users', { username: username.value.trim(), password: password.value, role: role.value })
               .then(() => { toast('User created'); load(); })
-              .catch(err => toast(err.message, 'err'));
+              .catch(err => { toast(err.message, 'err'); return false; });
           },
         },
       ],
@@ -172,9 +176,11 @@ function usersCard() {
           kind: 'primary',
           onClick: () => {
             if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
-            api.put(`/api/users/${u.id}/password`, { newPassword: password.value })
+            // Returned for the same reason as the create dialog above — a
+            // failed reset must not silently discard the typed password.
+            return api.put(`/api/users/${u.id}/password`, { newPassword: password.value })
               .then(() => toast('Password reset'))
-              .catch(err => toast(err.message, 'err'));
+              .catch(err => { toast(err.message, 'err'); return false; });
           },
         },
       ],

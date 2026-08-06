@@ -206,8 +206,8 @@ export default {
                 isEnabled: task?.isEnabled ?? true,
               };
               const req = isNew ? api.post('/api/tasks', body) : api.put(`/api/tasks/${task.id}`, body);
-              req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
-                 .catch(err => toast(err.message, 'err'));
+              return req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
+                 .catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],
