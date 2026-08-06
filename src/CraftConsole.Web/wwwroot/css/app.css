@@ -638,10 +638,27 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 }
 .type-card:hover { background: var(--sheet-2); border-color: var(--n-300); }
 .type-card.selected { background: var(--blue-wash); border-color: var(--blue); }
-.type-name { display: flex; align-items: center; gap: var(--s2); font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 700; }
+/* Wraps rather than clips: in the right-hand column a card is ~138px wide
+   inside its padding, and the longest pairing (PaperMC + RECOMMENDED) wants
+   141px. Letting the tag drop to its own line survives any future name. */
+.type-name { display: flex; align-items: center; flex-wrap: wrap; gap: 3px var(--s2); font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 700; }
 .type-desc { font-family: var(--f-sans); font-size: var(--t-xs); color: var(--ink-low); line-height: 1.45; }
 
-.setup-split { display: flex; flex-direction: column; gap: var(--s3); }
+/* Two columns: what you run on the left, what you install on the right.
+   minmax(0,1fr) rather than 1fr so a long working-directory path ellipses
+   inside its column instead of forcing the track wider. align-items:start
+   keeps the shorter column from stretching to match the taller one. */
+.setup-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s3);
+  align-items: start;
+}
+/* Below this the type chooser and the profile rows are both too cramped to
+   sit side by side, well before the phone breakpoint proper. */
+@media (max-width: 1040px) {
+  .setup-split { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Folder picker */
 .browse-picker { display: flex; flex-direction: column; gap: var(--s2); }
