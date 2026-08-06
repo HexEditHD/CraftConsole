@@ -112,7 +112,7 @@ public static class LoginPage
               body.username = document.getElementById('un').value;
             } else {
               var pw2 = document.getElementById('pw2').value;
-              if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = ''; return; }
+              if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
             }
             var btn = e.target.querySelector('button');
             btn.disabled = true;
@@ -124,12 +124,12 @@ public static class LoginPage
               if (res.ok) { location.reload(); return; }
               return res.json().catch(function () { return {}; }).then(function (data) {
                 err.textContent = data.message || 'Something went wrong.';
-                err.style.display = '';
+                err.style.display = 'block';
                 btn.disabled = false;
               });
             }).catch(function () {
               err.textContent = 'Network error.';
-              err.style.display = '';
+              err.style.display = 'block';
               btn.disabled = false;
             });
           });
