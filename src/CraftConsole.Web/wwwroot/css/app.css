@@ -1,105 +1,123 @@
 /* ══════════════════════════════════════════════════════════════════════
-   CraftConsole — BLUEPRINT
-   A technical drawing. Cool, measured, near-monochrome.
+   CraftConsole — CYANOTYPE
+   BLUEPRINT's drafting furniture, MISSION CONTROL's density, on the
+   ground a blueprint actually has.
 
-   The signature is structure, not colour: a real dot grid sits behind
-   the log, panels carry drafting corner ticks, and everything lands on a
-   strict 4px module so the grid and the layout agree. There is no
-   marketing accent — the ink is the brand, and the one blue that exists
-   is used for annotation and active state, the way a drafter's pencil
-   would be.
+   A real blueprint is not ink on white paper — it is a cyanotype: white
+   lines burned onto Prussian blue. So this is the same technical drawing
+   BLUEPRINT makes, printed the original way, which is what lets it carry
+   MISSION CONTROL's dark, mono-forward, high-density instrument surface
+   without either half feeling bolted on.
 
-   Distinct from ATELIER (the other light branch): cool not warm, grid
-   not whitespace, geometric sans not serif.
+   What comes from where:
+     BLUEPRINT       corner ticks, the title block, the drawn grid, the
+                     strict 4px module, the isometric cube mark
+     MISSION CONTROL monospace carries all structure, tabular figures,
+                     hairline rules, tight rows, amber for live state
 
-   Minecraft DNA is one quiet nod: the brand mark is a cube drawn in
-   isometric projection, like a part in an exploded view.
+   Amber is the one non-blue thing on the sheet. On Prussian blue it is
+   very nearly the complement, so it separates from the ground harder
+   than any brighter blue could — it reads as the drafter's grease pencil
+   marking up a print. It means live/active and nothing else.
+
+   One texture, not two: MISSION CONTROL's scanline wash is dropped here.
+   The grid is already a full-surface overlay, and two of them fight.
    ══════════════════════════════════════════════════════════════════════ */
 
 /* ── Fonts ───────────────────────────────────────────────────────────── */
 @font-face {
-  font-family: 'Geist'; font-style: normal; font-weight: 400; font-display: swap;
-  src: url('/fonts/geist-400.woff2') format('woff2');
+  font-family: 'JBMono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/jbmono-400.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'Geist'; font-style: normal; font-weight: 600; font-display: swap;
-  src: url('/fonts/geist-600.woff2') format('woff2');
+  font-family: 'JBMono'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/fonts/jbmono-700.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'GeistMono'; font-style: normal; font-weight: 400; font-display: swap;
-  src: url('/fonts/geistmono-400.woff2') format('woff2');
+  font-family: 'Plex'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/plex-400.woff2') format('woff2');
 }
 @font-face {
-  font-family: 'GeistMono'; font-style: normal; font-weight: 600; font-display: swap;
-  src: url('/fonts/geistmono-600.woff2') format('woff2');
+  font-family: 'Plex'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/plex-600.woff2') format('woff2');
 }
 
 /* ── Tokens ──────────────────────────────────────────────────────────── */
 :root {
-  /* Cool paper. A deliberate blue cast — this is drafting stock, not
-     the warm bond ATELIER prints on. */
-  --sheet:   #f7f9fb;
-  --sheet-2: #eef2f6;
-  --sheet-3: #e3e9ef;
+  /* The print. Prussian blue, pulled back from full cyanotype saturation
+     — the real thing is nearer #12395e, which is punishing to stare at
+     for a whole session. Steps are small; this language separates with
+     rules, not with fills. */
+  --sheet:   #0a1e33;
+  --sheet-2: #0d2740;
+  --sheet-3: #12304c;
 
-  /* A deliberate ramp — every rule, divider and disabled state gets its
-     own step rather than an opacity guess. */
-  --n-100: #dde4ec;
-  --n-200: #c6d0da;
-  --n-300: #a7b4c2;
-  --n-400: #8593a3;
-  /* --n-500 is a touch darker than the even ramp step wants, because
-     --ink-low points at it and carries hints, timestamps and empty-state
-     copy at body size. The even step (#667585) lands at 4.47:1 — just
-     under WCAG AA. */
-  --n-500: #63707e;
-  --n-600: #4c5866;
-  --n-700: #343d48;
-  --n-800: #212932;
-  --n-900: #11161c;
+  /* The ramp runs the other way to BLUEPRINT's. It is not "how dark" —
+     it is "how far off the sheet", and the sheet is now the dark end. So
+     n-100 barely lifts off the ground and n-900 is the drawn white line.
+     Every rule downstream that reaches for a higher number to mean more
+     contrast keeps working without being touched. */
+  --n-100: #14304a;
+  --n-200: #1d3f5e;
+  --n-300: #2c5478;
+  --n-400: #4a739a;
+  /* --ink-low points here and carries hints, timestamps and empty-state
+     copy at body size, so it is held at 4.5:1 on --sheet rather than
+     taking the even ramp step (#6b8cab lands at 4.31:1 — just under AA). */
+  --n-500: #7396b4;
+  --n-600: #9db9d1;
+  --n-700: #bed3e5;
+  --n-800: #d8e6f2;
+  --n-900: #ecf4fb;
 
   --ink:     var(--n-900);
   --ink-mid: var(--n-600);
-  --ink-low: var(--n-500);   /* 4.9:1 on --sheet — carries body-size hints */
+  --ink-low: var(--n-500);   /* 4.5:1 on --sheet — carries body-size hints */
 
   --rule:      var(--n-100);
   --rule-firm: var(--n-200);
 
-  /* Drafting blue. Annotation and active state only — never decoration. */
-  --blue:      #1f5fd0;
-  --blue-wash: #e7eefb;
-  --grid:      #cfdaea;   /* the dot grid itself */
+  /* Grease pencil. Live/active state only — never decoration. Amber is
+     very nearly the complement of the sheet, so it separates harder than
+     any brighter blue could on this ground. */
+  --blue:      #ffb000;
+  --blue-wash: #3a2a06;   /* the marked-up fill behind an active control */
+  --grid:      #16395c;   /* the ruled grid itself */
 
-  /* Status. Muted to sit inside a technical drawing rather than shout. */
-  --warn: #8a5300;
-  --bad:  #a5271f;
-  --good: #1c6b45;
+  /* Status, re-derived for the blue ground — BLUEPRINT's are tuned for
+     paper and go muddy here. All clear 4.5:1 on --sheet. */
+  --warn: #e8b24a;
+  --bad:  #ff6f61;
+  --good: #4fd18b;
 
-  --f-sans: 'Geist', system-ui, sans-serif;
-  --f-mono: 'GeistMono', ui-monospace, Consolas, monospace;
+  /* Monospace carries all structure; Plex is reserved for prose. */
+  --f-mono: 'JBMono', ui-monospace, Consolas, monospace;
+  --f-sans: 'Plex', system-ui, sans-serif;
 
-  --t-xs: 11px;
-  --t-sm: 12.5px;
-  --t-md: 13.5px;
-  --t-lg: 16px;
-  --t-xl: 21px;
-  --t-2xl: 30px;
+  --t-xs: 10.5px;
+  --t-sm: 11.5px;
+  --t-md: 12.5px;
+  --t-lg: 15px;
+  --t-xl: 19px;
+  --t-2xl: 26px;
 
-  /* Strict 4px module — the same pitch as the grid, so they agree. */
-  --s1: 4px;
-  --s2: 8px;
-  --s3: 12px;
-  --s4: 20px;
-  --s5: 32px;
-  --s6: 48px;
+  /* Still a strict module so the grid and the layout agree, but stepped
+     down from BLUEPRINT's — this sheet is read at MISSION CONTROL's
+     density. */
+  --s1: 3px;
+  --s2: 6px;
+  --s3: 10px;
+  --s4: 16px;
+  --s5: 26px;
+  --s6: 40px;
 
-  --grid-pitch: 20px;
+  --grid-pitch: 16px;
   --r: 2px;
 
-  --fast: .12s;
-  --base: .2s;
+  --fast: .1s;
+  --base: .16s;
 
-  --side-w: 208px;
+  --side-w: 196px;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────── */
@@ -109,11 +127,18 @@ html, body {
   margin: 0; height: 100%;
   background: var(--sheet);
   color: var(--ink);
-  font-family: var(--f-sans);
+  /* Mono by default — structure is the common case here, and prose opts
+     back out with .prose. */
+  font-family: var(--f-mono);
   font-size: var(--t-md);
-  line-height: 1.55;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Prose opts out of the mono default: descriptions, hints, empty-state
+   copy — anything read as a sentence rather than scanned as data. */
+.prose, .empty-sub, .switch-desc, .hint, .banner, p.sub { font-family: var(--f-sans); }
 
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -.015em; }
 p { margin: 0; }
@@ -189,7 +214,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .nav-item .count {
   margin-left: auto; font-family: var(--f-mono); font-size: 10px;
-  background: var(--bad); color: #fff; padding: 0 5px; border-radius: 2px;
+  /* Dark-on-light: --bad is a light red on this ground, so white would
+     only reach ~2.4:1. The sheet colour reads cleanly on it. */
+  background: var(--bad); color: var(--sheet); padding: 0 5px; border-radius: 2px;
 }
 
 #sidebar-foot {
@@ -249,7 +276,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--rule-firm);
   border-radius: var(--r);
   color: var(--ink);
-  font-family: var(--f-sans); font-size: var(--t-sm); font-weight: 500;
+  font-family: var(--f-mono); font-size: var(--t-sm); font-weight: 400;
   cursor: pointer; white-space: nowrap;
   transition: background var(--fast), border-color var(--fast), color var(--fast);
 }
@@ -259,7 +286,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.primary { background: var(--n-900); border-color: var(--n-900); color: var(--sheet); }
 .btn.primary:hover:not(:disabled) { background: var(--n-800); border-color: var(--n-800); }
 .btn.danger { border-color: var(--bad); color: var(--bad); background: var(--sheet); }
-.btn.danger:hover:not(:disabled) { background: var(--bad); color: #fff; }
+.btn.danger:hover:not(:disabled) { background: var(--bad); color: var(--sheet); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--ink-mid); }
 .btn.ghost:hover:not(:disabled) { background: var(--sheet-3); color: var(--ink); border-color: transparent; }
 .btn.sm { padding: 3px var(--s2); font-size: var(--t-xs); }
@@ -397,7 +424,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   display: flex; align-items: center; gap: var(--s2);
   padding: var(--s2) var(--s3);
   background: var(--sheet); border: 1px solid var(--n-800); border-radius: var(--r);
-  box-shadow: 0 4px 16px rgba(17, 22, 28, .1);
+  /* Elevation has to go darker than the sheet to register at all here;
+     BLUEPRINT's paper-shadow alphas are invisible on Prussian blue. */
+  box-shadow: 0 4px 16px rgba(0, 6, 14, .5);
   font-size: var(--t-sm); max-width: 380px; pointer-events: auto;
   animation: toastIn var(--base) ease-out;
 }
@@ -409,7 +438,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(33, 41, 50, .34);
+  background: rgba(2, 9, 18, .62);
   display: flex; align-items: center; justify-content: center; padding: var(--s4);
   animation: fadeIn .1s;
 }
@@ -418,7 +447,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   width: 100%; max-width: 470px; max-height: calc(100vh - var(--s6));
   display: flex; flex-direction: column;
   background: var(--sheet); border: 1px solid var(--n-800); border-radius: var(--r);
-  box-shadow: 0 16px 48px rgba(17, 22, 28, .18);
+  box-shadow: 0 16px 48px rgba(0, 6, 14, .62);
 }
 .modal.wide { max-width: 640px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3); border-bottom: 1px solid var(--rule-firm); }
@@ -457,15 +486,21 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 @keyframes blink { 0%, 62% { opacity: 1; } 63%, 100% { opacity: .25; } }
 
 /* The log sits on the grid — the one place the drawing surface shows
-   through behind live data. Line-height is generous; dense mono on a
-   light ground needs the air. */
+   through behind live data. Ruled, not dotted: BLUEPRINT stipples its
+   sheet because dots stay quiet under dark text on white, but on the
+   print the grid is a drawn line like everything else.
+
+   Line-height comes down from BLUEPRINT's 1.7 — light mono on a dark
+   ground already reads open, and this sheet is scanned at MISSION
+   CONTROL's density. */
 .log {
   flex: 1; overflow-y: auto;
   padding: var(--s2) var(--s3);
   background-color: var(--sheet-2);
-  background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0);
+  background-image: linear-gradient(to right,  var(--grid) 1px, transparent 1px),
+                    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
   background-size: var(--grid-pitch) var(--grid-pitch);
-  font-family: var(--f-mono); font-size: var(--t-sm); line-height: 1.7;
+  font-family: var(--f-mono); font-size: var(--t-sm); line-height: 1.55;
   overscroll-behavior: contain;
 }
 .line { display: flex; gap: var(--s2); white-space: pre-wrap; word-break: break-word; }
@@ -473,7 +508,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .line .lv { flex-shrink: 0; width: 44px; user-select: none; font-size: 10px; letter-spacing: .06em; padding-top: 3px; }
 .line .msg { flex: 1; min-width: 0; }
 /* Severity reads the user's Settings colours, set inline on the view root.
-   Those are user data; the fallbacks here are the light-ground values. */
+   Those are user data and keep their saturated values on every branch;
+   the fallbacks here are this sheet's re-derived ones. */
 .line.lv-info  .lv, .line.lv-chat .lv { color: var(--lv-info, var(--ink-low)); }
 .line.lv-warn  .lv, .line.lv-warn  .msg { color: var(--lv-warn, var(--warn)); }
 .line.lv-error .lv, .line.lv-error .msg { color: var(--lv-err, var(--bad)); }
@@ -490,7 +526,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .composer .input { height: 30px; }
 .composer .send { width: 30px; height: 30px; padding: 0; flex-shrink: 0; }
 
-.suggest { position: absolute; bottom: calc(100% + 3px); left: var(--s4); min-width: 210px; max-height: 210px; overflow: hidden auto; background: var(--sheet); border: 1px solid var(--n-800); border-radius: var(--r); box-shadow: 0 8px 24px rgba(17,22,28,.14); z-index: 10; }
+.suggest { position: absolute; bottom: calc(100% + 3px); left: var(--s4); min-width: 210px; max-height: 210px; overflow: hidden auto; background: var(--sheet); border: 1px solid var(--n-800); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,6,14,.55); z-index: 10; }
 .suggest-item { padding: 4px var(--s2); cursor: pointer; font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid); }
 .suggest-item:hover, .suggest-item.sel { background: var(--n-900); color: var(--sheet); }
 

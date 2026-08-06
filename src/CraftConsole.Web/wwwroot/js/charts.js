@@ -20,9 +20,9 @@ function cssVar(name) {
  *  Near-monochrome by intent: plain ink for normal load, and the muted
  *  status hues only once a threshold is actually crossed. */
 export function thresholdColor(percent) {
-  if (percent >= 88) return cssVar('--bad')  || '#a5271f';
-  if (percent >= 68) return cssVar('--warn') || '#8a5300';
-  return cssVar('--n-700') || '#343d48';
+  if (percent >= 88) return cssVar('--bad')  || '#ff6f61';
+  if (percent >= 68) return cssVar('--warn') || '#e8b24a';
+  return cssVar('--n-700') || '#bed3e5';
 }
 
 /** Stepped trace over a dashed datum line. */
@@ -38,7 +38,7 @@ export function stepSpark(values, { width = 120, height = 28, max = null, color 
   // Datum line at the midpoint — the reference a plotted trace is read against.
   svg.append(el('line', {
     x1: 0, y1: (height / 2).toFixed(2), x2: width, y2: (height / 2).toFixed(2),
-    stroke: cssVar('--grid') || '#cfdaea', 'stroke-width': 1,
+    stroke: cssVar('--grid') || '#16395c', 'stroke-width': 1,
     'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke',
   }));
 
@@ -81,7 +81,7 @@ export function gauge(percent, { size = 104, label = '' } = {}) {
 
   // Dashed reference ring — the drawn envelope the value is measured into.
   svg.append(el('path', {
-    d, fill: 'none', stroke: cssVar('--grid') || '#cfdaea',
+    d, fill: 'none', stroke: cssVar('--grid') || '#16395c',
     'stroke-width': 1, 'stroke-dasharray': '2 3',
   }));
   // Solid measured value.
@@ -93,17 +93,17 @@ export function gauge(percent, { size = 104, label = '' } = {}) {
 
   const num = el('text', {
     x: c, y: c, 'text-anchor': 'middle', 'dominant-baseline': 'middle',
-    fill: cssVar('--ink') || '#11161c',
+    fill: cssVar('--ink') || '#ecf4fb',
     'font-size': '21', 'font-weight': '600',
-    'font-family': "'GeistMono', ui-monospace, monospace",
+    'font-family': "'JBMono', ui-monospace, monospace",
   });
   num.textContent = `${Math.round(p)}%`;
 
   const sub = el('text', {
     x: c, y: c + 18, 'text-anchor': 'middle',
-    fill: cssVar('--ink-low') || '#667585',
+    fill: cssVar('--ink-low') || '#7396b4',
     'font-size': '8.5', 'letter-spacing': '1.4',
-    'font-family': "'GeistMono', ui-monospace, monospace",
+    'font-family': "'JBMono', ui-monospace, monospace",
   });
   sub.textContent = label.toUpperCase();
 

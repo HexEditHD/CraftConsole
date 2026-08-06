@@ -40,20 +40,21 @@ public static class LoginPage
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>CraftConsole — {{title}}</title>
         <style>
-          @font-face { font-family:'Geist'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/geist-400.woff2') format('woff2'); }
-          @font-face { font-family:'Geist'; font-style:normal; font-weight:600; font-display:swap; src:url('/fonts/geist-600.woff2') format('woff2'); }
-          @font-face { font-family:'GeistMono'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/geistmono-400.woff2') format('woff2'); }
-          :root { --sheet:#f7f9fb; --sheet-2:#eef2f6; --sheet-3:#e3e9ef;
-                  --n-200:#c6d0da; --n-300:#a7b4c2; --n-500:#63707e; --n-600:#4c5866; --n-800:#212932; --n-900:#11161c;
-                  --blue:#1f5fd0; --blue-wash:#e7eefb; --grid:#cfdaea; --bad:#a5271f; }
+          @font-face { font-family:'JBMono'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/jbmono-400.woff2') format('woff2'); }
+          @font-face { font-family:'JBMono'; font-style:normal; font-weight:700; font-display:swap; src:url('/fonts/jbmono-700.woff2') format('woff2'); }
+          @font-face { font-family:'Plex'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/plex-400.woff2') format('woff2'); }
+          :root { --sheet:#0a1e33; --sheet-2:#0d2740; --sheet-3:#12304c;
+                  --n-200:#1d3f5e; --n-300:#2c5478; --n-500:#7396b4; --n-600:#9db9d1; --n-800:#d8e6f2; --n-900:#ecf4fb;
+                  --blue:#ffb000; --blue-wash:#3a2a06; --grid:#16395c; --bad:#ff6f61; }
           * { box-sizing:border-box; }
           html,body { margin:0; height:100%; background:var(--sheet); color:var(--n-900);
-                      font-family:'Geist',system-ui,-apple-system,sans-serif;
+                      font-family:'JBMono',ui-monospace,Consolas,monospace;
                       -webkit-font-smoothing:antialiased; }
-          /* The sheet itself: the same dot grid the panel draws on. */
+          /* The sheet itself: the same ruled grid the panel draws on. */
           body { display:flex; align-items:center; justify-content:center; padding:20px;
-                 background-image:radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0);
-                 background-size:20px 20px; }
+                 background-image:linear-gradient(to right, var(--grid) 1px, transparent 1px),
+                                  linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+                 background-size:16px 16px; }
           ::selection { background: var(--blue-wash); color: var(--n-900); }
           :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
           /* Corner ticks mark the card as a drawn part, matching the panel. */
@@ -66,13 +67,14 @@ public static class LoginPage
           .brand { display:flex; align-items:center; gap:10px; margin-bottom:24px; }
           /* Isometric cube, like a part in an exploded view. */
           .mark { width:26px; height:26px; flex-shrink:0;
-                  background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f5fd0' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z'/%3E%3Cpath d='M12 12 20.5 7.25'/%3E%3Cpath d='M12 12 3.5 7.25'/%3E%3Cpath d='M12 12v9.5'/%3E%3C/svg%3E"); }
+                  background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffb000' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z'/%3E%3Cpath d='M12 12 20.5 7.25'/%3E%3Cpath d='M12 12 3.5 7.25'/%3E%3Cpath d='M12 12v9.5'/%3E%3C/svg%3E"); }
           h1 { font-size:14px; margin:0; font-weight:600; letter-spacing:-.02em; }
-          p.sub { margin:2px 0 0; font-size:12px; color:var(--n-500); }
-          label { display:block; font-family:'GeistMono',ui-monospace,monospace; font-size:10.5px;
+          /* Prose sets in Plex; everything structural stays mono. */
+          p.sub { margin:2px 0 0; font-size:12px; color:var(--n-500); font-family:'Plex',system-ui,sans-serif; }
+          label { display:block; font-family:'JBMono',ui-monospace,monospace; font-size:10.5px;
                   letter-spacing:.1em; text-transform:uppercase; color:var(--n-500); margin:16px 0 4px; }
           input { width:100%; padding:6px 9px; background:var(--sheet); border:1px solid var(--n-200);
-                  border-radius:2px; color:var(--n-900); font-family:'GeistMono',ui-monospace,monospace;
+                  border-radius:2px; color:var(--n-900); font-family:'JBMono',ui-monospace,monospace;
                   font-size:12.5px; transition:border-color .12s, box-shadow .12s; }
           input:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-wash); }
           button { width:100%; margin-top:22px; padding:8px; border:1px solid var(--n-900); border-radius:2px;
@@ -82,8 +84,8 @@ public static class LoginPage
           button:disabled { opacity:.45; cursor:not-allowed; }
           .err { display:none; margin-top:14px; padding:7px 9px; background:var(--sheet);
                  border:1px solid var(--bad); border-radius:2px; color:var(--bad); font-size:12px; }
-          .hint { margin-top:14px; font-size:11px; color:var(--n-500); line-height:1.55; }
-          .hint code { color:var(--n-600); font-family:'GeistMono',ui-monospace,monospace; }
+          .hint { margin-top:14px; font-size:11px; color:var(--n-500); line-height:1.55; font-family:'Plex',system-ui,sans-serif; }
+          .hint code { color:var(--n-600); font-family:'JBMono',ui-monospace,monospace; }
         </style>
         </head>
         <body>
