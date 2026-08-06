@@ -48,7 +48,11 @@
   --n-200: #c6d0da;
   --n-300: #a7b4c2;
   --n-400: #8593a3;
-  --n-500: #667585;
+  /* --n-500 is a touch darker than the even ramp step wants, because
+     --ink-low points at it and carries hints, timestamps and empty-state
+     copy at body size. The even step (#667585) lands at 4.47:1 — just
+     under WCAG AA. */
+  --n-500: #63707e;
   --n-600: #4c5866;
   --n-700: #343d48;
   --n-800: #212932;

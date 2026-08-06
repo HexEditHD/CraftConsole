@@ -44,7 +44,7 @@ public static class LoginPage
           @font-face { font-family:'Geist'; font-style:normal; font-weight:600; font-display:swap; src:url('/fonts/geist-600.woff2') format('woff2'); }
           @font-face { font-family:'GeistMono'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/geistmono-400.woff2') format('woff2'); }
           :root { --sheet:#f7f9fb; --sheet-2:#eef2f6; --sheet-3:#e3e9ef;
-                  --n-200:#c6d0da; --n-300:#a7b4c2; --n-500:#667585; --n-600:#4c5866; --n-800:#212932; --n-900:#11161c;
+                  --n-200:#c6d0da; --n-300:#a7b4c2; --n-500:#63707e; --n-600:#4c5866; --n-800:#212932; --n-900:#11161c;
                   --blue:#1f5fd0; --blue-wash:#e7eefb; --grid:#cfdaea; --bad:#a5271f; }
           * { box-sizing:border-box; }
           html,body { margin:0; height:100%; background:var(--sheet); color:var(--n-900);
