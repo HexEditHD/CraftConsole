@@ -41,7 +41,10 @@ export default {
     const dirBrowseBtn = h('button', {
       class: 'btn sm icon-only', title: 'Browse for a folder', 'aria-label': 'Browse for a folder',
       onclick: async () => {
-        const picked = await openFolderPicker(dirInput.value.trim() || state.system?.defaultServerRoot);
+        // The default goes in as defaultPath, not as the start path: the picker
+        // treats a start path as something the user chose and honours it, but
+        // will step a non-existent default aside in favour of home.
+        const picked = await openFolderPicker(dirInput.value.trim(), { defaultPath: state.system?.defaultServerRoot });
         if (picked) dirInput.value = picked;
       },
     }, icon('folder'));
