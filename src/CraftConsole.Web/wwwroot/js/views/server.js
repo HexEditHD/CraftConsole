@@ -4,7 +4,7 @@ import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
 import { joinPath } from '../platform.js';
-import { openFolderPicker } from '../components/folder-picker.js';
+import { openPathPicker, withBrowse } from '../components/path-picker.js';
 
 export default {
   id: 'server',
@@ -44,7 +44,7 @@ export default {
         // The default goes in as defaultPath, not as the start path: the picker
         // treats a start path as something the user chose and honours it, but
         // will step a non-existent default aside in favour of home.
-        const picked = await openFolderPicker(dirInput.value.trim(), { defaultPath: state.system?.defaultServerRoot });
+        const picked = await openPathPicker({ startPath: dirInput.value.trim(), defaultPath: state.system?.defaultServerRoot });
         if (picked) dirInput.value = picked;
       },
     }, icon('folder'));
@@ -236,7 +236,15 @@ export default {
         }),
       };
 
-      const syncCustom = () => { f.javaCustom.style.display = f.java.value === '__custom' ? '' : 'none'; };
+      // The custom-path row is the input *and* its Browse button, so the whole
+      // row has to hide together — toggling the input alone would strand the
+      // button next to the Java dropdown.
+      // No extension filter on it: the launcher is java.exe on Windows and an
+      // extensionless binary on Linux, so there is nothing common to match on.
+      const javaCustomRow = withBrowse(f.javaCustom, { mode: 'file', browseLabel: 'Browse for a Java executable' });
+      javaCustomRow.style.marginTop = '6px';
+
+      const syncCustom = () => { javaCustomRow.style.display = f.java.value === '__custom' ? '' : 'none'; };
       f.java.addEventListener('change', syncCustom);
       syncCustom();
 
@@ -246,10 +254,12 @@ export default {
 
       const managedFields = h('div', {},
         h('div', { class: 'field-row' },
-          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'), f.jar),
+          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'),
+            withBrowse(f.jar, { mode: 'file', ext: '.jar', defaultPath: state.system?.defaultServerRoot })),
           h('div', { class: 'field' }, h('label', {}, 'Type'), f.type)),
-        h('div', { class: 'field' }, h('label', {}, 'Working directory'), f.dir),
-        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, f.javaCustom),
+        h('div', { class: 'field' }, h('label', {}, 'Working directory'),
+          withBrowse(f.dir, { defaultPath: state.system?.defaultServerRoot })),
+        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, javaCustomRow),
         h('div', { class: 'field-row' },
           h('div', { class: 'field' }, h('label', {}, 'Min RAM (MB)'), f.minRam),
           h('div', { class: 'field' }, h('label', {}, 'Max RAM (MB)'), f.maxRam),

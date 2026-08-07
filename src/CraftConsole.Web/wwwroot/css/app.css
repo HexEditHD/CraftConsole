@@ -653,17 +653,63 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 }
 
 /* Folder picker */
+/* A path input with its Browse button. align-items:start so the button sits
+   at the top of a multi-line sources textarea rather than centred against it. */
+.path-field { display: flex; align-items: flex-start; gap: var(--s1); }
+.path-field > .input, .path-field > .textarea { flex: 1; min-width: 0; }
+.path-field > .btn { flex-shrink: 0; }
+
 .browse-picker { display: flex; flex-direction: column; gap: var(--s2); }
 /* Up plus the OS-appropriate jumps, then the current path. Wraps so the
    path drops to its own line rather than being squeezed to nothing. */
 .browse-toolbar { display: flex; align-items: center; gap: var(--s1); flex-wrap: wrap; }
 .browse-path { flex: 1 1 150px; min-width: 0; padding-left: var(--s1); font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-list { height: 230px; overflow-y: auto; background: var(--sheet-2); border: 1px solid var(--rule-firm); border-radius: var(--r); }
-.browse-row { display: flex; align-items: center; gap: var(--s2); padding: 4px var(--s2); border-bottom: 1px solid var(--rule); cursor: pointer; font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid); }
+.browse-row { display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
 .browse-row:last-child { border-bottom: none; }
-.browse-row:hover { background: var(--sheet-3); color: var(--ink); }
+/* The row body: opens a folder, or toggles a file. */
+.browse-open {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: var(--s2);
+  padding: 4px var(--s2);
+  background: none; border: none; cursor: pointer; text-align: left;
+  font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid);
+  transition: background var(--fast), color var(--fast);
+}
+.browse-open:hover { background: var(--sheet-3); color: var(--ink); }
 .browse-row .icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--ink-low); }
-.browse-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-row .size { flex-shrink: 0; font-size: 9.5px; color: var(--ink-low); }
+/* Multi-select only: a folder has to be both openable and choosable. */
+.browse-pick {
+  flex-shrink: 0; width: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; border-right: 1px solid var(--rule);
+  color: var(--ink-low); cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.browse-pick:hover { background: var(--sheet-3); color: var(--blue); }
+.browse-pick .icon { width: 12px; height: 12px; }
+/* Chosen entries are marked up in the grease pencil, like anything else live. */
+.browse-row.picked .browse-open { background: var(--blue-wash); color: var(--blue); }
+.browse-row.picked .icon { color: var(--blue); }
+
+.browse-selection { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s1); padding-top: var(--s2); }
+.browse-selection .cap {
+  font-family: var(--f-mono); font-size: var(--t-xs);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-low);
+  margin-right: var(--s1);
+}
+.browse-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 220px;
+  padding: 1px 3px 1px 6px; border-radius: var(--r);
+  background: var(--blue-wash); border: 1px solid var(--blue);
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--blue);
+}
+.browse-chip .icon { width: 11px; height: 11px; color: var(--blue); }
+.browse-chip .chip-x { display: inline-flex; padding: 1px; background: none; border: none; color: inherit; cursor: pointer; opacity: .65; }
+.browse-chip .chip-x:hover { opacity: 1; }
+.browse-chip .chip-x .icon { width: 10px; height: 10px; }
 
 /* ══════════════════════════════════════════════════════════════════════
    Files
