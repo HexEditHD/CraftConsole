@@ -1,4 +1,4 @@
-// App shell for BLUEPRINT: ruled sidebar, drawing title block carrying
+// App shell for CYANOTYPE: ruled sidebar, drawing title block carrying
 // the readings and server controls in its own cells, hash router.
 import { h, icon, toast } from './ui.js';
 import { api } from './api.js';

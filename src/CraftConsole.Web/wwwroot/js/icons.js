@@ -1,4 +1,4 @@
-// BLUEPRINT icon set — 24x24, 1.5px stroke, round joins, butt caps.
+// CYANOTYPE icon set — 24x24, 1.5px stroke, round joins, butt caps.
 // Drawn as schematic parts: even stroke weight, no tapering, geometry
 // that would survive being printed at 1:1 on a drawing sheet.
 const P = {
@@ -42,22 +42,22 @@ const P = {
   info:      '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.75v.01"/>',
 };
 
-// Aliases for the six views outside the redesign slice, which still call
-// the previous icon names. Drop once those are rebuilt in this language.
+// Semantic aliases. These are not spelling variants — each says at the call
+// site what the glyph is being used *for*, which the shared base name does
+// not: a Save button and a resolved issue both draw a check, and a tree
+// disclosure and a download both draw a downward arrow.
+//
+// This list was 25 entries; 16 were unreferenced leftovers from the previous
+// icon vocabulary and have been dropped. Every alias below has a live call
+// site — see the note on chevronDown, which wants a glyph of its own.
 Object.assign(P, {
-  refresh: P.restart,     arrowClockwise: P.restart,
   alert: P.warning,       warningCircle: P.warning,
-  checkCircle: P.check,   magnifyingGlass: P.search,
-  paperPlaneRight: P.send, downloadSimple: P.download,
-  lightning: P.bolt,      usersThree: P.users,
-  hardDrives: P.drives,   terminalWindow: P.terminal,
-  fileCode: P.file,       fileText: P.file,
-  puzzlePiece: P.puzzle,  clockCountdown: P.clock,
-  slidersHorizontal: P.sliders,
-  pencilSimple: P.pencil, userX: P.userMinus,
-  prohibit: P.ban,        caretDown: P.arrowDown,
-  box: P.cube,            gauge: P.pulse,
-  save: P.check,          chevronDown: P.arrowDown,
+  checkCircle: P.check,   save: P.check,
+  box: P.cube,            hardDrives: P.drives,
+  pencilSimple: P.pencil, refresh: P.restart,
+  // A disclosure control, currently borrowing the download arrow. It reads
+  // as an action rather than a state; a proper caret would be better.
+  chevronDown: P.arrowDown,
 });
 
 export function icon(name, cls = 'icon') {

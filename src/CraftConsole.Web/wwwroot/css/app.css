@@ -37,10 +37,10 @@
   font-family: 'Plex'; font-style: normal; font-weight: 400; font-display: swap;
   src: url('/fonts/plex-400.woff2') format('woff2');
 }
-@font-face {
-  font-family: 'Plex'; font-style: normal; font-weight: 600; font-display: swap;
-  src: url('/fonts/plex-600.woff2') format('woff2');
-}
+/* Plex is only ever set at 400 — prose opts out of the mono default but
+   never asks for weight. A 600 face was vendored and never requested by any
+   rule on any screen, so it is not declared here. Emphasis in this language
+   is carried by the mono face. */
 
 /* ── Tokens ──────────────────────────────────────────────────────────── */
 :root {
@@ -148,7 +148,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 ::selection { background: var(--blue-wash); color: var(--n-900); }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-[disabled], .is-disabled { opacity: .45; cursor: not-allowed; }
+[disabled] { opacity: .45; cursor: not-allowed; }
 
 *::-webkit-scrollbar { width: 12px; height: 12px; }
 *::-webkit-scrollbar-track { background: transparent; }
@@ -161,17 +161,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .mono { font-family: var(--f-mono); font-size: var(--t-sm); }
 .dim { color: var(--ink-mid); }
 .dimmer { color: var(--ink-low); }
-.tiny { font-size: var(--t-xs); }
 .small { font-size: var(--t-sm); }
 .nowrap { white-space: nowrap; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
-
-/* Annotation label — set in mono, the way a callout on a drawing is. */
-.label {
-  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 400;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-low);
-}
 
 /* ══════════════════════════════════════════════════════════════════════
    Shell
@@ -463,7 +456,6 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 
 .spinner { width: 13px; height: 13px; flex-shrink: 0; border: 1.5px solid var(--sheet-3); border-top-color: var(--blue); border-radius: 50%; animation: spin .6s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.load-row { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-sm); color: var(--ink-mid); }
 
 /* ══════════════════════════════════════════════════════════════════════
    Console

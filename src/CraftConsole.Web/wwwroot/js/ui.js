@@ -1,4 +1,4 @@
-// DOM + UI helpers for BLUEPRINT.
+// DOM + UI helpers for CYANOTYPE.
 // h() is a plain DOM builder, not a design decision, so it keeps its
 // shape; everything it renders below is new.
 import { icon } from './icons.js';

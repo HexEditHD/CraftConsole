@@ -1,8 +1,7 @@
-// BLUEPRINT chart primitives — plotted, not illustrated.
-// The sparkline is a stepped trace over a dashed datum line; the gauge is
-// a fine arc inside a dashed reference ring, with the value set in mono.
-// Values are always real text as well, so colour never carries the
-// reading alone.
+// CYANOTYPE chart primitives — plotted, not illustrated.
+// The gauge is a fine arc inside a dashed reference ring, with the value
+// set in mono. Values are always real text as well, so colour never
+// carries the reading alone.
 const NS = 'http://www.w3.org/2000/svg';
 
 function el(tag, attrs = {}) {
@@ -23,42 +22,6 @@ export function thresholdColor(percent) {
   if (percent >= 88) return cssVar('--bad')  || '#ff6f61';
   if (percent >= 68) return cssVar('--warn') || '#e8b24a';
   return cssVar('--n-700') || '#bed3e5';
-}
-
-/** Stepped trace over a dashed datum line. */
-export function stepSpark(values, { width = 120, height = 28, max = null, color } = {}) {
-  const svg = el('svg', { viewBox: `0 0 ${width} ${height}`, preserveAspectRatio: 'none', role: 'img' });
-  if (values.length < 2) return svg;
-
-  const stroke = color || thresholdColor(0);
-  const top = max ?? Math.max(...values, 1e-9);
-  const stepX = width / (values.length - 1);
-  const y = v => 1.5 + (1 - Math.min(v / top, 1)) * (height - 3);
-
-  // Datum line at the midpoint — the reference a plotted trace is read against.
-  svg.append(el('line', {
-    x1: 0, y1: (height / 2).toFixed(2), x2: width, y2: (height / 2).toFixed(2),
-    stroke: cssVar('--grid') || '#16395c', 'stroke-width': 1,
-    'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke',
-  }));
-
-  // Stepped rather than smoothed: each sample is a discrete measurement,
-  // and interpolating between them would imply data that was not taken.
-  let d = `M0,${y(values[0]).toFixed(2)}`;
-  for (let i = 1; i < values.length; i++) {
-    const x = (i * stepX).toFixed(2);
-    d += ` H${x} V${y(values[i]).toFixed(2)}`;
-  }
-
-  svg.append(el('path', {
-    d, fill: 'none', stroke, 'stroke-width': 1.25,
-    'stroke-linejoin': 'miter', 'vector-effect': 'non-scaling-stroke',
-  }));
-
-  const title = el('title');
-  title.textContent = `latest ${values[values.length - 1].toFixed(1)} · peak ${Math.max(...values).toFixed(1)}`;
-  svg.append(title);
-  return svg;
 }
 
 /** Fine arc gauge inside a dashed reference ring. */
