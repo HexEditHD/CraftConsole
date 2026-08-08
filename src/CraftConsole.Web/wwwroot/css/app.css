@@ -817,6 +817,29 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   .profile-card { flex-wrap: wrap; }
   .profile-card .actions { margin-left: auto; }
   .view-head { flex-wrap: wrap; }
+
+  /* Touch targets. --s2/--s3-based padding reads fine on a desktop pointer
+     but a handful of controls land under 28px tall, below the ~44px iOS/
+     Android guideline. Desktop keeps its density untouched — this only
+     widens the box on phones, never the glyph or font size inside it. */
+  .btn.sm { min-height: 40px; }
+  .btn.sm.icon-only { min-height: 40px; min-width: 40px; }
+  .seg-item { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; }
+  /* The drawn track stays 36x18 — resizing it would be a different control.
+     ::before instead grows the label's hit area without touching the box
+     the switch is rendered in; a click anywhere in the invisible 44x44
+     still reaches the <input> because it lands on the wrapping <label>. */
+  .switch::before {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+  }
+
+  /* Server's profile editor packs three fields (Min/Max RAM, MC version)
+     into fixed 100px columns — fine on the desktop-width modal it was
+     built for, unreadable in a 343px phone modal. Wrapping is scoped to
+     mobile so the desktop three-across layout is untouched. */
+  .field-row { flex-wrap: wrap; }
+  .field-row > .field { flex: 1 1 140px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
