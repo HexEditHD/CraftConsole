@@ -14,6 +14,7 @@ public static class SetupApi
         bool ShowTimestamp, bool ShowDate, bool AutoScrollConsole, int MaxConsoleLines,
         string ColorInfo, string ColorWarn, string ColorError, string ColorPlayer);
     public record BrowseEntryDto(string Name, string Path);
+    public record BrowseFileDto(string Name, string Path, long Size);
 
     public static void MapSetupApi(this IEndpointRouteBuilder app)
     {
@@ -135,8 +136,17 @@ public static class SetupApi
         // forms at any path on disk by typing it, so this is a UX convenience
         // over an already-trusted capability, not a new one. Read-only:
         // it only lists directory names, never file contents.
-        app.MapGet("/api/setup/browse", (string? path) =>
+        // files=true adds the folder's files to the response; ext is an optional
+        // comma-separated allow-list (".jar"). Both default off, so the
+        // folder-only callers that predate this keep their existing payload.
+        app.MapGet("/api/setup/browse", (string? path, bool? files, string? ext) =>
         {
+            var wantFiles = files == true;
+            var allowed = (ext ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(e => e.StartsWith('.') ? e : "." + e)
+                .ToArray();
+
             IResult DriveList()
             {
                 var drives = DriveInfo.GetDrives()
@@ -144,7 +154,11 @@ public static class SetupApi
                     .Select(d => new BrowseEntryDto(d.Name.TrimEnd('\\'), d.Name))
                     .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
                     .ToList();
-                return Results.Json(new { Path = "", Parent = (string?)null, Directories = drives }, Json.Options);
+                // A drive list has no files, but the shape stays consistent so the
+                // client never has to special-case it.
+                return wantFiles
+                    ? Results.Json(new { Path = "", Parent = (string?)null, Directories = drives, Files = new List<BrowseFileDto>() }, Json.Options)
+                    : Results.Json(new { Path = "", Parent = (string?)null, Directories = drives }, Json.Options);
             }
 
             // No path means: show the drive list on Windows, or "/" on Unix
@@ -176,12 +190,31 @@ public static class SetupApi
             }
 
             List<BrowseEntryDto> directories;
+            List<BrowseFileDto> fileList = [];
             try
             {
                 directories = Directory.GetDirectories(fullPath)
                     .Select(d => new BrowseEntryDto(Path.GetFileName(d), d))
                     .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
                     .ToList();
+
+                if (wantFiles)
+                {
+                    fileList = Directory.GetFiles(fullPath)
+                        .Where(f => allowed.Length == 0
+                            || allowed.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                        .Select(f =>
+                        {
+                            // A file can vanish between the listing and the stat,
+                            // and on Linux a broken symlink lists but cannot be
+                            // stat'ed. Neither should fail the whole request.
+                            long size;
+                            try { size = new FileInfo(f).Length; } catch { size = 0; }
+                            return new BrowseFileDto(Path.GetFileName(f), f, size);
+                        })
+                        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
@@ -198,7 +231,9 @@ public static class SetupApi
                 ? (OperatingSystem.IsWindows() ? "" : null)
                 : Path.GetDirectoryName(fullPath);
 
-            return Results.Json(new { Path = fullPath, Parent = parent, Directories = directories }, Json.Options);
+            return wantFiles
+                ? Results.Json(new { Path = fullPath, Parent = parent, Directories = directories, Files = fileList }, Json.Options)
+                : Results.Json(new { Path = fullPath, Parent = parent, Directories = directories }, Json.Options);
         }).RequireRole(Role.Admin);
 
         // ── Settings ──────────────────────────────────────────────────────

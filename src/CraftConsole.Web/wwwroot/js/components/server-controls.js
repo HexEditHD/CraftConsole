@@ -1,6 +1,6 @@
-// Start/Stop toggle + Restart for the active server, with capability gating.
-// Shared by the header and the active profile's row in the Server view so the
-// gating logic and post-start navigation only need to live in one place.
+// Start/Stop + Restart for the active server, with capability gating.
+// Shared by the strip and the Server view so the gating and post-start
+// navigation only live in one place.
 import { h, icon, toast, confirmDialog } from '../ui.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
@@ -9,14 +9,15 @@ export function createServerControls() {
   const toggleIcon = h('span', {});
   const toggleLabel = h('span', {}, 'Start');
   const toggleBtn = h('button', {
-    class: 'server-toggle stopped',
+    class: 'btn primary',
     onclick: () => (toggleBtn.dataset.running === 'true' ? stop() : start()),
   }, toggleIcon, toggleLabel);
-  const btnRestart = h('button', {
-    class: 'icon-btn hairline restart-btn', title: 'Restart', 'aria-label': 'Restart server', onclick: restart,
-  }, icon('arrowClockwise'));
 
-  const el = h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, toggleBtn, btnRestart);
+  const btnRestart = h('button', {
+    class: 'btn icon-only', title: 'Restart', 'aria-label': 'Restart server', onclick: restart,
+  }, icon('restart'));
+
+  const el = h('div', { class: 'controls' }, toggleBtn, btnRestart);
 
   async function start() {
     toggleBtn.disabled = true;
@@ -59,7 +60,7 @@ export function createServerControls() {
     const isRcon = s?.profile?.mode === 'Rcon';
 
     toggleBtn.dataset.running = String(running);
-    toggleBtn.className = `server-toggle ${running ? 'running' : 'stopped'}`;
+    toggleBtn.className = running ? 'btn danger' : 'btn primary';
     toggleBtn.disabled = running ? !caps.canStop : (busy || !caps.canStart);
     toggleIcon.replaceChildren(icon(running ? 'stop' : 'play'));
     toggleLabel.textContent = running ? 'Stop' : (isRcon ? 'Connect' : 'Start');

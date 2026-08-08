@@ -4,13 +4,13 @@ import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
 import { joinPath } from '../platform.js';
-import { openFolderPicker } from '../components/folder-picker.js';
+import { openPathPicker, withBrowse } from '../components/path-picker.js';
 
 export default {
   id: 'server',
   title: 'Server',
   subtitle: 'Profiles, JARs and Java runtimes',
-  icon: 'hardDrives',
+  icon: 'drives',
 
   render(el) {
     let profiles = [];
@@ -41,7 +41,10 @@ export default {
     const dirBrowseBtn = h('button', {
       class: 'btn sm icon-only', title: 'Browse for a folder', 'aria-label': 'Browse for a folder',
       onclick: async () => {
-        const picked = await openFolderPicker(dirInput.value.trim() || state.system?.defaultServerRoot);
+        // The default goes in as defaultPath, not as the start path: the picker
+        // treats a start path as something the user chose and honours it, but
+        // will step a non-existent default aside in favour of home.
+        const picked = await openPathPicker({ startPath: dirInput.value.trim(), defaultPath: state.system?.defaultServerRoot });
         if (picked) dirInput.value = picked;
       },
     }, icon('folder'));
@@ -53,9 +56,9 @@ export default {
 
     const manualCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
-        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const manualLink = h('a', { target: '_blank', rel: 'noopener noreferrer' }, 'Official website');
@@ -90,9 +93,9 @@ export default {
 
     const javaLinuxCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--color-neutral-900)',
-        border: '1px solid var(--hair)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const javaLinuxHint = h('div', { style: { display: 'none', marginTop: '12px' } },
@@ -146,9 +149,9 @@ export default {
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
-              isRcon ? h('span', { class: 'badge info' }, 'RCON') : h('span', { class: 'badge' }, p.type),
-              !isRcon && p.minecraftVersion ? h('span', { class: 'badge info' }, p.minecraftVersion) : null,
-              isActive ? h('span', { class: 'badge accent' }, 'ACTIVE') : null),
+              isRcon ? h('span', { class: 'tag' }, 'RCON') : h('span', { class: 'tag' }, p.type),
+              !isRcon && p.minecraftVersion ? h('span', { class: 'tag' }, p.minecraftVersion) : null,
+              isActive ? h('span', { class: 'tag live' }, 'ACTIVE') : null),
             h('div', { class: 'meta' }, isRcon
               ? `${p.rconHost}:${p.rconPort}`
               : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
@@ -233,7 +236,15 @@ export default {
         }),
       };
 
-      const syncCustom = () => { f.javaCustom.style.display = f.java.value === '__custom' ? '' : 'none'; };
+      // The custom-path row is the input *and* its Browse button, so the whole
+      // row has to hide together — toggling the input alone would strand the
+      // button next to the Java dropdown.
+      // No extension filter on it: the launcher is java.exe on Windows and an
+      // extensionless binary on Linux, so there is nothing common to match on.
+      const javaCustomRow = withBrowse(f.javaCustom, { mode: 'file', browseLabel: 'Browse for a Java executable' });
+      javaCustomRow.style.marginTop = '6px';
+
+      const syncCustom = () => { javaCustomRow.style.display = f.java.value === '__custom' ? '' : 'none'; };
       f.java.addEventListener('change', syncCustom);
       syncCustom();
 
@@ -243,10 +254,12 @@ export default {
 
       const managedFields = h('div', {},
         h('div', { class: 'field-row' },
-          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'), f.jar),
+          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'),
+            withBrowse(f.jar, { mode: 'file', ext: '.jar', defaultPath: state.system?.defaultServerRoot })),
           h('div', { class: 'field' }, h('label', {}, 'Type'), f.type)),
-        h('div', { class: 'field' }, h('label', {}, 'Working directory'), f.dir),
-        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, f.javaCustom),
+        h('div', { class: 'field' }, h('label', {}, 'Working directory'),
+          withBrowse(f.dir, { defaultPath: state.system?.defaultServerRoot })),
+        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, javaCustomRow),
         h('div', { class: 'field-row' },
           h('div', { class: 'field' }, h('label', {}, 'Min RAM (MB)'), f.minRam),
           h('div', { class: 'field' }, h('label', {}, 'Max RAM (MB)'), f.maxRam),
@@ -311,14 +324,18 @@ export default {
               const req = isNew
                 ? api.post('/api/profiles', body)
                 : api.put(`/api/profiles/${profile.id}`, body);
-              req.then(async created => {
+              // Returned so modal() awaits the whole chain — the RCON password
+              // is a second request that only runs after the profile itself is
+              // saved, and without the return the dialog closed before it had
+              // even been sent, taking the typed password with it.
+              return req.then(async created => {
                 if (mode === 'Rcon' && password) {
                   const id = isNew ? created.id : profile.id;
                   await api.put(`/api/profiles/${id}/rcon-password`, { password });
                 }
                 toast(isNew ? 'Profile created' : 'Profile saved');
                 loadProfiles();
-              }).catch(err => toast(err.message, 'err'));
+              }).catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],
@@ -343,7 +360,7 @@ export default {
         },
           h('div', { class: 'type-name' },
             t.displayName,
-            h('span', { class: `badge ${t.tag === 'RECOMMENDED' ? 'accent' : t.tag === 'OFFICIAL' ? 'info' : ''}` }, t.tag)),
+            h('span', { class: `tag ${t.tag === 'RECOMMENDED' ? 'live' : ''}` }, t.tag)),
           h('div', { class: 'type-desc' }, t.description)));
       }
       const manual = selectedType && !selectedType.hasAutoDownload;
@@ -393,7 +410,7 @@ export default {
       catch { javaInstalls = []; }
       javaList.innerHTML = '';
       if (!javaInstalls.length) {
-        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--muted-2)', fontSize: '12.5px' } },
+        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--ink-low)', fontSize: 'var(--t-sm)' } },
           'No Java runtimes found. Download one below — Minecraft 1.21+ needs Java 21.'));
         return;
       }
@@ -402,7 +419,7 @@ export default {
           h('div', {},
             h('div', { class: 'switch-label' }, j.label),
             h('div', { class: 'switch-desc mono' }, j.executablePath)),
-          h('span', { class: 'badge accent' }, `Java ${j.majorVersion}`)));
+          h('span', { class: 'tag live' }, `Java ${j.majorVersion}`)));
       }
     }
 

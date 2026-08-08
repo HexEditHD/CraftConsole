@@ -125,6 +125,18 @@ app.Use(async (ctx, next) =>
         return;
     }
 
+    // The login/setup page is rendered by this gate itself, so its own webfonts
+    // have to be reachable without a session. Otherwise they fall through to the
+    // catch-all below and the browser is handed login HTML in place of a woff2
+    // ("OTS parsing error: invalid sfntVersion"), leaving the very first screen
+    // a user sees on a fallback system face. Fonts are static and carry no
+    // session state, so only GET/HEAD is opened up.
+    if ((HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method))
+        && ctx.Request.Path.StartsWithSegments("/fonts"))
+    {
+        await next();
+        return;
+    }
     var auth = ctx.RequestServices.GetRequiredService<AuthService>();
     var session = auth.TryValidateSession(ctx.Request.Cookies[AuthApi.CookieName]);
     if (session is not null)

@@ -59,7 +59,7 @@ export default {
   id: 'scheduler',
   title: 'Tasks',
   subtitle: 'Scheduled triggers and actions',
-  icon: 'clockCountdown',
+  icon: 'clock',
 
   render(el) {
     let tasks = [];
@@ -109,11 +109,11 @@ export default {
                 }),
                 h('span', { class: 'track' }))),
             h('td', { style: { fontWeight: 600 } }, task.name,
-              task.isEnabled ? null : h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Disabled')),
-            h('td', {}, h('span', { class: 'badge info' }, triggerLabel(task)),
-              triggerWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
-            h('td', { class: 'mono small text-2' }, actionLabel(task, backupJobs),
-              actionWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: actionWarn }, '!') : null),
+              task.isEnabled ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, 'Disabled')),
+            h('td', {}, h('span', { class: 'tag' }, triggerLabel(task)),
+              triggerWarn ? h('span', { class: 'tag warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
+            h('td', { class: 'mono small dim' }, actionLabel(task, backupJobs),
+              actionWarn ? h('span', { class: 'tag warn', style: { marginLeft: '6px' }, title: actionWarn }, '!') : null),
             h('td', {}, h('div', { class: 'actions' },
               h('button', {
                 class: 'btn sm', title: 'Run once now',
@@ -206,8 +206,8 @@ export default {
                 isEnabled: task?.isEnabled ?? true,
               };
               const req = isNew ? api.post('/api/tasks', body) : api.put(`/api/tasks/${task.id}`, body);
-              req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
-                 .catch(err => toast(err.message, 'err'));
+              return req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
+                 .catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],

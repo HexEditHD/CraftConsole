@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state, isAdmin } from '../store.js';
 import { joinPath } from '../platform.js';
+import { withBrowse } from '../components/path-picker.js';
 
 export default {
   id: 'backups',
@@ -55,11 +56,11 @@ export default {
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               job.name,
-              h('span', { class: 'badge' }, job.compression),
-              enabled ? null : h('span', { class: 'badge warn' }, 'Disabled')),
+              h('span', { class: 'tag' }, job.compression),
+              enabled ? null : h('span', { class: 'tag warn' }, 'Disabled')),
             h('div', { class: 'meta' },
               `${job.sourcePaths.length} source${job.sourcePaths.length === 1 ? '' : 's'} → ${job.destinationPath}`),
-            h('div', { class: 'meta muted' },
+            h('div', { class: 'meta dimmer' },
               job.lastRun ? `Last run ${timeAgo(job.lastRun)}` : 'Never run')),
           h('div', { class: 'actions' },
             h('button', {
@@ -143,10 +144,11 @@ export default {
             : null,
           h('div', { class: 'field' }, h('label', {}, 'Archive'), select),
           h('div', { class: 'field' },
-            h('label', {}, 'Restore into'), target,
+            h('label', {}, 'Restore into'),
+            withBrowse(target, { defaultPath: state.status?.profile?.workingDirectory }),
             h('span', { class: 'hint' },
               'Files in the archive overwrite files of the same name. Anything else in the directory is left untouched.')),
-          h('p', { class: 'muted small' },
+          h('p', { class: 'dimmer small prose' },
             'Consider running this job once before restoring, so the current state is recoverable.')),
         actions: [
           { label: 'Cancel', kind: 'ghost' },
@@ -195,9 +197,13 @@ export default {
         title: isNew ? 'New backup job' : `Edit “${job.name}”`,
         body: h('div', {},
           h('div', { class: 'field' }, h('label', {}, 'Name'), f.name),
-          h('div', { class: 'field' }, h('label', {}, 'Source files / folders'), f.sources,
-            h('span', { class: 'hint' }, 'Folders are zipped recursively.')),
-          h('div', { class: 'field' }, h('label', {}, 'Destination folder'), f.dest),
+          h('div', { class: 'field' }, h('label', {}, 'Source files / folders'),
+            // Multi-select: a job takes several sources, and browsing adds to
+            // the list rather than replacing it, so it can be built up.
+            withBrowse(f.sources, { multiple: true, defaultPath: workingDir || state.system?.defaultServerRoot }),
+            h('span', { class: 'hint' }, 'One path per line. Folders are zipped recursively.')),
+          h('div', { class: 'field' }, h('label', {}, 'Destination folder'),
+            withBrowse(f.dest, { defaultPath: state.system?.defaultBackupRoot })),
           h('div', { class: 'field' }, h('label', {}, 'Compression'), f.compression)),
         actions: [
           { label: 'Cancel', kind: 'ghost' },
@@ -217,8 +223,8 @@ export default {
                 compression: f.compression.value,
               };
               const req = isNew ? api.post('/api/backups', body) : api.put(`/api/backups/${job.id}`, body);
-              req.then(() => { toast(isNew ? 'Job created' : 'Job saved'); load(); })
-                 .catch(err => toast(err.message, 'err'));
+              return req.then(() => { toast(isNew ? 'Job created' : 'Job saved'); load(); })
+                 .catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],

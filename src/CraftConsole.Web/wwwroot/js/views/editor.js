@@ -7,7 +7,7 @@ export default {
   id: 'editor',
   title: 'Files',
   subtitle: 'Config editor jailed to the server directory',
-  icon: 'fileCode',
+  icon: 'file',
 
   render(el) {
     let tabs = [];        // {path, name, content, savedContent, dirty}
