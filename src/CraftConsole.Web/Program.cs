@@ -54,6 +54,8 @@ builder.Services.AddSingleton(new HttpClient());
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<ServerDownloadService>();
 builder.Services.AddSingleton<JavaDownloadService>();
+builder.Services.AddSingleton<ModrinthClient>();
+builder.Services.AddSingleton<ModrinthService>();
 
 // Key ring pinned to the app data directory: the default location ignores
 // --data-dir, which would leave the Debian service unable to decrypt RCON
@@ -212,6 +214,7 @@ app.MapPlayersApi();
 app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
+app.MapModrinthApi();
 app.MapSystemApi();
 app.MapUsersApi();
 

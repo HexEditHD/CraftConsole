@@ -686,6 +686,13 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   .setup-split { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Modrinth search results — a project card is wider than a server-type card
+   (title, author, a description line) so the minimum track is wider too. */
+.modrinth-results { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: var(--s3); }
+.modrinth-card-icon { width: 40px; height: 40px; border-radius: var(--r); flex-shrink: 0; object-fit: cover; }
+.modrinth-card-icon.placeholder { display: flex; align-items: center; justify-content: center; background: var(--sheet-3); color: var(--ink-low); }
+.modrinth-card-icon.placeholder .icon { width: 18px; height: 18px; }
+
 /* Folder picker */
 /* A path input with its Browse button. align-items:start so the button sits
    at the top of a multi-line sources textarea rather than centred against it. */
