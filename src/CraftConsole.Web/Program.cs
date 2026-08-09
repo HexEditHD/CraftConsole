@@ -81,7 +81,10 @@ if (httpsEnabled)
 }
 
 builder.Services.AddSingleton<EventBroker>();
-builder.Services.AddSingleton<ServerSupervisor>();
+// ServerSupervisor is no longer registered directly — one exists per server,
+// owned by this registry. See ServerRegistry's and ServerSupervisor's own
+// doc comments for why.
+builder.Services.AddSingleton<ServerRegistry>();
 builder.Services.AddSingleton<ProfilesService>();
 builder.Services.AddSingleton<BackupService>();
 builder.Services.AddSingleton<SetupService>();
@@ -209,11 +212,18 @@ if (httpsEnabled)
 if (app.Environment.IsDevelopment())
     app.MapDevApi();
 
-// Gracefully stop a running server when the panel shuts down
+// Gracefully stop every running server when the panel shuts down. Resolved
+// once here rather than via app.Services inside the callback: on a
+// failed-startup path this Stopping callback can fire while the provider is
+// already disposing, and GetRequiredService at that point throws
+// ObjectDisposedException — harmless (nothing was running to stop) but noisy
+// in exactly the shutdown path this exists for. The registry itself stays
+// valid to call even after the provider starts disposing; only resolving a
+// *new* service from it does not.
+var serverRegistry = app.Services.GetRequiredService<ServerRegistry>();
 app.Lifetime.ApplicationStopping.Register(() =>
 {
-    var supervisor = app.Services.GetRequiredService<ServerSupervisor>();
-    supervisor.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    serverRegistry.DisposeAllAsync().GetAwaiter().GetResult();
 });
 
 // Open the panel in the default browser. Skipped for dev runs, for --no-browser,

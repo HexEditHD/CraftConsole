@@ -237,6 +237,48 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #page-title { font-size: var(--t-lg); }
 #page-sub { font-size: var(--t-sm); color: var(--ink-mid); }
 
+/* Server switcher — its own titled cell: which drawing (screen) you're on
+   is #page-title's job, which server it's a drawing OF is this one's. A
+   dot rather than a full status-pill, since this sits beside readings that
+   are about to repeat the same state in more detail. */
+#server-switch { position: relative; border-left: 1px solid var(--rule); display: flex; align-items: center; }
+.server-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--n-300); }
+.server-dot.ok   { background: var(--good); }
+.server-dot.bad  { background: var(--bad); }
+.server-dot.warn { background: var(--warn); }
+
+.server-switch-trigger {
+  display: flex; align-items: center; gap: var(--s2);
+  background: none; border: none; padding: 0; margin: 0;
+  font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink);
+  cursor: pointer;
+}
+.server-switch-trigger:disabled { cursor: default; }
+/* Only a real affordance once there's something to switch to. */
+.server-switch-trigger:not(.has-menu) .icon { display: none; }
+.server-switch-trigger .icon { width: 11px; height: 11px; color: var(--ink-low); transition: transform var(--fast); }
+.server-switch-trigger[aria-expanded="true"] .icon { transform: rotate(180deg); }
+
+.server-switch-menu {
+  position: absolute; top: calc(100% + var(--s2)); left: var(--s4); z-index: 20;
+  min-width: 240px; max-height: 320px; overflow-y: auto;
+  background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0,6,14,.55);
+}
+.server-switch-item {
+  display: flex; align-items: center; gap: var(--s2); width: 100%;
+  padding: var(--s2) var(--s3);
+  background: none; border: none; border-bottom: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid);
+  cursor: pointer; text-align: left;
+  transition: background var(--fast), color var(--fast);
+}
+.server-switch-item:last-child { border-bottom: none; }
+.server-switch-item:hover { background: var(--sheet-3); color: var(--ink); }
+.server-switch-item.current { color: var(--blue); background: var(--blue-wash); }
+.server-switch-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-switch-item .count { flex-shrink: 0; font-size: var(--t-xs); color: var(--ink-low); }
+
 /* Readings sit in their own cells of the title block. */
 .readings { display: flex; margin-left: auto; flex-shrink: 0; }
 .reading { padding: var(--s3) var(--s4); border-left: 1px solid var(--rule); min-width: 92px; }
@@ -789,7 +831,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   #sidebar { display: none; }
   #titleblock { flex-wrap: wrap; }
   .tb-cell, .controls { padding: var(--s2) var(--s3); }
-  .controls { border-left: none; }
+  .controls, #server-switch { border-left: none; }
+  .server-switch-menu { left: 0; right: 0; min-width: 0; }
   .readings { order: 3; flex-basis: 100%; margin-left: 0; overflow-x: auto; border-top: 1px solid var(--rule); }
   .reading { padding: var(--s2) var(--s3); min-width: 84px; }
   .reading:first-child { border-left: none; }
