@@ -33,6 +33,7 @@ const P = {
   pencil:    '<path d="M4 20h4L20 8l-4-4L4 16Z"/><path d="M14.5 5.5 18.5 9.5"/>',
   folder:    '<path d="M3 5.5a1 1 0 0 1 1-1h4.5l2 3H20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/>',
   download:  '<path d="M12 3v12.5"/><path d="M7 11l5 5 5-5"/><path d="M4 20.5h16"/>',
+  upload:    '<path d="M12 21v-12.5"/><path d="M7 13l5-5 5 5"/><path d="M4 3.5h16"/>',
 
   userMinus: '<path d="M3.5 20.5v-1.5a4.5 4.5 0 0 1 4.5-4.5h3a4.5 4.5 0 0 1 4.5 4.5v1.5"/><circle cx="9.5" cy="7.5" r="3.5"/><path d="M17.5 8.5h4"/>',
   ban:       '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6 18.4 18.4"/>',

@@ -99,6 +99,15 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
 });
 
+// ASP.NET Core's own multipart body limit (128 MB) applies independently of
+// Kestrel's request body limit — the upload routes disable the latter, but
+// still need this raised too, or a large world upload is rejected before
+// WorkspaceApi's own size check ever runs.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = WorkspaceApi.MaxUploadBytes;
+});
+
 var app = builder.Build();
 
 await app.Services.GetRequiredService<AuthService>().InitializeAsync();

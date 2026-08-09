@@ -759,10 +759,23 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
    ══════════════════════════════════════════════════════════════════════ */
 .editor-layout { display: flex; gap: var(--s3); height: 100%; min-height: 0; }
 
-.file-tree {
-  width: 236px; flex-shrink: 0; overflow-y: auto; padding: var(--s2);
+.file-tree-pane {
+  width: 236px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
   background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  transition: outline-color var(--fast);
+  outline: 2px dashed transparent; outline-offset: -2px;
 }
+/* A drop anywhere on the pane that isn't over a folder row lands at the
+   tree root — see the dragover/drop handlers bound directly on this
+   element in editor.js. */
+.file-tree-pane.drop-target { outline-color: var(--blue); }
+.tree-header {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid);
+}
+.file-tree { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s2); }
 .tree-node.collapsed > .tree-children { display: none; }
 /* Leader lines down the index, the way a drawing tree is ruled. */
 .tree-children { margin-left: var(--s3); padding-left: var(--s1); border-left: 1px solid var(--rule); }
@@ -776,9 +789,22 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .tree-row .icon { width: 13px; height: 13px; flex-shrink: 0; color: var(--ink-low); transition: transform var(--fast); }
 .tree-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row .size { flex-shrink: 0; font-size: 9.5px; color: var(--ink-low); }
+/* Not openable in the editor — no hover affordance beyond the download button. */
+.tree-row.non-editable { cursor: default; }
+.tree-row.non-editable:hover { background: transparent; color: var(--ink-mid); }
+.tree-row .btn.icon-only { flex-shrink: 0; opacity: .45; transition: opacity var(--fast); }
+.tree-row:hover .btn.icon-only { opacity: 1; }
+/* The folder currently under a dragged file. */
+.tree-row.drop-target { background: var(--blue-wash); color: var(--blue); }
 /* The file currently being marked up. */
 .tree-row.open-file { background: var(--blue-wash); color: var(--blue); }
 .tree-row.open-file .icon { color: var(--blue); }
+
+.upload-progress {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--s2); border-top: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: 9.5px; color: var(--ink-mid);
+}
 
 .editor-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r); overflow: hidden; }
 .editor-tabs { display: flex; overflow-x: auto; min-height: 29px; background: var(--sheet-2); border-bottom: 1px solid var(--rule-firm); }
