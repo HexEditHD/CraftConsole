@@ -522,21 +522,13 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .follow.on .pip { animation: blink 1.8s steps(1, end) infinite; }
 @keyframes blink { 0%, 62% { opacity: 1; } 63%, 100% { opacity: .25; } }
 
-/* The log sits on the grid — the one place the drawing surface shows
-   through behind live data. Ruled, not dotted: BLUEPRINT stipples its
-   sheet because dots stay quiet under dark text on white, but on the
-   print the grid is a drawn line like everything else.
-
-   Line-height comes down from BLUEPRINT's 1.7 — light mono on a dark
+/* Line-height comes down from BLUEPRINT's 1.7 — light mono on a dark
    ground already reads open, and this sheet is scanned at MISSION
    CONTROL's density. */
 .log {
   flex: 1; overflow-y: auto;
   padding: var(--s2) var(--s3);
   background-color: var(--sheet-2);
-  background-image: linear-gradient(to right,  var(--grid) 1px, transparent 1px),
-                    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-  background-size: var(--grid-pitch) var(--grid-pitch);
   font-family: var(--f-mono); font-size: var(--t-sm); line-height: 1.55;
   overscroll-behavior: contain;
 }
