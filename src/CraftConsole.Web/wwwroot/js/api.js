@@ -13,7 +13,7 @@ async function handleResponse(res) {
       const data = await res.json();
       if (data?.message) message = data.message;
     } catch { /* non-JSON error body */ }
-    throw new Error(message);
+    throw Object.assign(new Error(message), { status: res.status });
   }
 
   if (res.status === 204 || res.status === 202) return null;
@@ -36,10 +36,34 @@ async function upload(url, formData) {
   return handleResponse(res);
 }
 
+// fetch() has no upload progress event, so a large file transfer needs XHR
+// instead — mirrors handleResponse's status/body handling since there's no
+// Response object here to hand off to it.
+function uploadWithProgress(url, formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+    };
+    xhr.onerror = () => reject(new Error('Upload failed — connection lost.'));
+    xhr.onload = () => {
+      if (xhr.status === 401) { location.reload(); return; }
+      if (xhr.status === 204 || xhr.status === 202) { resolve(null); return; }
+      let data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { /* non-JSON body */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(Object.assign(new Error(data?.message ?? `${xhr.status} ${xhr.statusText}`), { status: xhr.status }));
+    };
+    xhr.send(formData);
+  });
+}
+
 export const api = {
   get: url => request('GET', url),
   post: (url, body) => request('POST', url, body),
   put: (url, body) => request('PUT', url, body),
   del: url => request('DELETE', url),
   upload: (url, formData) => upload(url, formData),
+  uploadWithProgress: (url, formData, onProgress) => uploadWithProgress(url, formData, onProgress),
 };

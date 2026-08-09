@@ -1,0 +1,164 @@
+using System.Net;
+using System.Text.Json;
+
+namespace CraftConsole.Infrastructure.Http;
+
+public record CurseForgeSearchHit(
+    int ModId, string Slug, string Name, string Summary, string Author, string? IconUrl, long Downloads);
+
+public record CurseForgeSearchResult(List<CurseForgeSearchHit> Hits, int TotalHits);
+
+/// <summary>
+/// RelationType is normalized to Modrinth's own vocabulary ("required",
+/// "optional", "incompatible", "embedded") rather than CurseForge's integer
+/// codes, so CurseForgeService's dependency handling reads the same way
+/// ModrinthService's does — see RelationTypeName below for the mapping.
+/// </summary>
+public record CurseForgeDependency(int ModId, string RelationType);
+
+public record CurseForgeFile(
+    int Id, int ModId, string FileName, string? DownloadUrl, long FileLength,
+    List<string> GameVersions, List<CurseForgeDependency> Dependencies);
+
+/// <summary>
+/// Search, mod-files listing, and single-file/-mod lookups against the
+/// CurseForge API v1. Every request needs an API key — CurseForge's terms
+/// require one, unlike Modrinth's open read API — passed per call rather
+/// than baked into the client, since it's configurable at runtime via
+/// Settings without restarting the process.
+/// </summary>
+public class CurseForgeClient
+{
+    private const string BaseUrl = "https://api.curseforge.com/v1";
+    private const string UserAgent = "CraftConsole (+https://github.com/HexEditHD/CraftConsole)";
+
+    // CurseForge's own internal id for the "Minecraft" game.
+    public const int MinecraftGameId = 432;
+
+    private readonly HttpClient _http;
+
+    public CurseForgeClient(HttpClient http)
+    {
+        _http = http;
+    }
+
+    private async Task<JsonDocument> GetJsonAsync(string url, string apiKey, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.UserAgent.ParseAdd(UserAgent);
+        req.Headers.Add("x-api-key", apiKey);
+
+        using var r = await _http.SendAsync(req, ct);
+        if (r.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            throw new InvalidOperationException("CurseForge rejected the configured API key.");
+        r.EnsureSuccessStatusCode();
+
+        return await JsonDocument.ParseAsync(await r.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+    }
+
+    public async Task<CurseForgeSearchResult> SearchAsync(
+        string apiKey, string query, int classId, int? modLoaderType, string? gameVersion,
+        int offset, int limit, CancellationToken ct = default)
+    {
+        List<string> qs = [$"gameId={MinecraftGameId}", $"classId={classId}", $"index={offset}", $"pageSize={limit}"];
+        if (!string.IsNullOrEmpty(query)) qs.Add($"searchFilter={Uri.EscapeDataString(query)}");
+        if (modLoaderType is { } mlt) qs.Add($"modLoaderType={mlt}");
+        if (!string.IsNullOrEmpty(gameVersion)) qs.Add($"gameVersion={Uri.EscapeDataString(gameVersion)}");
+
+        using var d = await GetJsonAsync($"{BaseUrl}/mods/search?{string.Join("&", qs)}", apiKey, ct);
+        var root = d.RootElement;
+
+        var hits = root.GetProperty("data").EnumerateArray().Select(m => new CurseForgeSearchHit(
+            m.GetProperty("id").GetInt32(),
+            m.TryGetProperty("slug", out var slug) ? slug.GetString() ?? "" : "",
+            m.GetProperty("name").GetString() ?? "",
+            m.TryGetProperty("summary", out var summary) ? summary.GetString() ?? "" : "",
+            m.TryGetProperty("authors", out var authors) && authors.ValueKind == JsonValueKind.Array && authors.GetArrayLength() > 0
+                ? authors[0].GetProperty("name").GetString() ?? "" : "",
+            m.TryGetProperty("logo", out var logo) && logo.ValueKind == JsonValueKind.Object
+                && logo.TryGetProperty("thumbnailUrl", out var thumb) && thumb.ValueKind == JsonValueKind.String
+                ? thumb.GetString() : null,
+            m.TryGetProperty("downloadCount", out var dl) ? (long)dl.GetDouble() : 0))
+            .ToList();
+
+        var total = root.TryGetProperty("pagination", out var pagination) && pagination.TryGetProperty("totalCount", out var tc)
+            ? tc.GetInt32()
+            : hits.Count;
+
+        return new CurseForgeSearchResult(hits, total);
+    }
+
+    /// <summary>Files for one mod, newest first (CurseForge's own default order), loader/game-version filtered.</summary>
+    public async Task<List<CurseForgeFile>> GetModFilesAsync(
+        string apiKey, int modId, int? modLoaderType, string? gameVersion, CancellationToken ct = default)
+    {
+        List<string> qs = [];
+        if (modLoaderType is { } mlt) qs.Add($"modLoaderType={mlt}");
+        if (!string.IsNullOrEmpty(gameVersion)) qs.Add($"gameVersion={Uri.EscapeDataString(gameVersion)}");
+
+        var url = $"{BaseUrl}/mods/{modId}/files";
+        if (qs.Count > 0) url += "?" + string.Join("&", qs);
+
+        using var d = await GetJsonAsync(url, apiKey, ct);
+        return [.. d.RootElement.GetProperty("data").EnumerateArray().Select(ParseFile)];
+    }
+
+    public async Task<CurseForgeFile> GetFileAsync(string apiKey, int modId, int fileId, CancellationToken ct = default)
+    {
+        using var d = await GetJsonAsync($"{BaseUrl}/mods/{modId}/files/{fileId}", apiKey, ct);
+        return ParseFile(d.RootElement.GetProperty("data"));
+    }
+
+    /// <summary>Just the name — used for a dependency's title in the install-required-deps prompt.</summary>
+    public async Task<string> GetModNameAsync(string apiKey, int modId, CancellationToken ct = default)
+    {
+        using var d = await GetJsonAsync($"{BaseUrl}/mods/{modId}", apiKey, ct);
+        return d.RootElement.GetProperty("data").GetProperty("name").GetString() ?? modId.ToString();
+    }
+
+    /// <summary>
+    /// A file's own DownloadUrl is sometimes null — its author disabled
+    /// third-party downloads for that file — in which case this dedicated
+    /// endpoint is the other way to resolve one, and can itself come back
+    /// empty for the same reason (nothing left to try after that).
+    /// </summary>
+    public async Task<string?> ResolveDownloadUrlAsync(string apiKey, int modId, int fileId, CancellationToken ct = default)
+    {
+        using var d = await GetJsonAsync($"{BaseUrl}/mods/{modId}/files/{fileId}/download-url", apiKey, ct);
+        return d.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.String
+            ? data.GetString()
+            : null;
+    }
+
+    private static CurseForgeFile ParseFile(JsonElement f)
+    {
+        var deps = f.TryGetProperty("dependencies", out var depArray) && depArray.ValueKind == JsonValueKind.Array
+            ? depArray.EnumerateArray().Select(dep => new CurseForgeDependency(
+                dep.GetProperty("modId").GetInt32(),
+                RelationTypeName(dep.GetProperty("relationType").GetInt32())))
+                .ToList()
+            : [];
+
+        return new CurseForgeFile(
+            f.GetProperty("id").GetInt32(),
+            f.GetProperty("modId").GetInt32(),
+            f.GetProperty("fileName").GetString() ?? "",
+            f.TryGetProperty("downloadUrl", out var url) && url.ValueKind == JsonValueKind.String ? url.GetString() : null,
+            f.TryGetProperty("fileLength", out var len) ? len.GetInt64() : 0,
+            f.TryGetProperty("gameVersions", out var gv) && gv.ValueKind == JsonValueKind.Array
+                ? [.. gv.EnumerateArray().Select(g => g.GetString()!)]
+                : [],
+            deps);
+    }
+
+    // CurseForge's relationType: 1 EmbeddedLibrary, 2 OptionalDependency,
+    // 3 RequiredDependency, 4 Tool, 5 Incompatible, 6 Include.
+    private static string RelationTypeName(int relationType) => relationType switch
+    {
+        3 => "required",
+        2 => "optional",
+        5 => "incompatible",
+        1 or 6 => "embedded",
+        _ => "optional",
+    };
+}

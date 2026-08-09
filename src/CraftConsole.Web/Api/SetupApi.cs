@@ -53,16 +53,25 @@ public static class SetupApi
             catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
         }).RequireRole(Role.Admin);
 
-        app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles) =>
-            await profiles.DeleteAsync(id) ? Results.NoContent() : Results.NotFound())
-            .RequireRole(Role.Admin);
+        app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles, ServerRegistry registry) =>
+        {
+            if (!await profiles.DeleteAsync(id)) return Results.NotFound();
+            // Stops it first if running, then drops its supervisor — a deleted
+            // profile's server has nothing left to track it by.
+            await registry.RemoveAsync(id);
+            return Results.NoContent();
+        }).RequireRole(Role.Admin);
 
+        // Operator, not Admin: this now doubles as "switch what the shell's
+        // server switcher is looking at" (see the title-block switcher in
+        // main.js), and viewing a different server is not a privileged action
+        // — an Operator can already see the active one's console/players/issues.
         app.MapPost("/api/profiles/{id:guid}/activate", async (Guid id, ProfilesService profiles) =>
         {
             if (await profiles.GetAsync(id) is null) return Results.NotFound();
             await profiles.SetActiveAsync(id);
             return Results.NoContent();
-        }).RequireRole(Role.Admin);
+        }).RequireRole(Role.Operator);
 
         // Write-only: sets or replaces the password, never returns it. GET
         // /api/profiles exposes only whether one is set (HasRconPassword above).
@@ -237,10 +246,15 @@ public static class SetupApi
         }).RequireRole(Role.Admin);
 
         // ── Settings ──────────────────────────────────────────────────────
-        app.MapGet("/api/settings", (SettingsHolder settings) =>
-            Results.Json(settings.Current, Json.Options)).RequireRole(Role.Admin);
+        // Projected rather than returning AppSettings wholesale: HasCurseForgeApiKey
+        // is computed (the key itself lives in CurseForgeSecretStore, encrypted,
+        // never serialized here), and AppSettings carries a few internal fields
+        // (ActiveProfileId, Theme, MinimizeToTray) nothing in the frontend reads
+        // from this endpoint.
+        app.MapGet("/api/settings", async (SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
+            Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options)).RequireRole(Role.Admin);
 
-        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings) =>
+        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
         {
             await settings.UpdateAsync(s =>
             {
@@ -253,7 +267,20 @@ public static class SetupApi
                 s.ColorError = dto.ColorError;
                 s.ColorPlayer = dto.ColorPlayer;
             });
-            return Results.Json(settings.Current, Json.Options);
+            return Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options);
         }).RequireRole(Role.Admin);
     }
+
+    private static async Task<object> SettingsSnapshot(SettingsHolder settings, CurseForgeSecretStore curseForgeKey) => new
+    {
+        settings.Current.ShowTimestamp,
+        settings.Current.ShowDate,
+        settings.Current.AutoScrollConsole,
+        settings.Current.MaxConsoleLines,
+        settings.Current.ColorInfo,
+        settings.Current.ColorWarn,
+        settings.Current.ColorError,
+        settings.Current.ColorPlayer,
+        HasCurseForgeApiKey = await curseForgeKey.HasAsync(),
+    };
 }

@@ -3,13 +3,18 @@
 A web control panel for Minecraft servers. It runs on the machine hosting your server,
 listens on localhost, and you drive it from a browser.
 
-Launch a server or attach to one already running, then manage it end to end — console,
-players, files, plugins, backups and scheduled tasks — all from one password-protected panel.
+Launch a server or attach to one already running — one at a time or several at once, switching
+between them from the title bar — then manage each end to end: console, players, files,
+plugins, mods, backups and scheduled tasks, all from one password-protected panel.
 
 ---
 
 ## Features
 
+- **Multiple servers** — every profile gets its own supervisor, so several can run
+  concurrently; a switcher in the title bar changes which one the rest of the panel is
+  showing without stopping any of the others, and console/players/issues stay isolated
+  per server even while switching between them live.
 - **Server control** — profiles in Managed or Remote (RCON) mode, start/stop/restart, a
   guided server-JAR download (Vanilla, Paper, Purpur, Fabric and NeoForge auto-download with a
   version picker; Spigot and classic Forge get a direct link and copy-pasteable install
@@ -21,9 +26,14 @@ players, files, plugins, backups and scheduled tasks — all from one password-p
 - **Players and moderation** — an online roster with IP, geolocation and join time; kick, ban
   and ban-IP with an optional reason; banned-player and banned-IP lists with pardon; a
   whitelist with an enforcement toggle.
-- **Files and plugins** — a config editor jailed to the server's own directory (allowlisted
-  extensions, 2 MB cap), and a plugin browser that reads each jar's `plugin.yml` and can
-  disable one without deleting it.
+- **Files** — a browser for the whole server directory, jailed so nothing can escape it: edit
+  config files in place (allowlisted extensions, 2 MB cap), or upload and download anything
+  else — a world backup, the server jar, a modpack — with drag-and-drop and a zip optionally
+  extracted on the way in.
+- **Plugins and mods** — search and install from Modrinth or CurseForge with one click,
+  filtered to the profile's own server type and loader; a required dependency prompts before
+  anything is written to disk. The Installed tab reads each jar's `plugin.yml` and can disable
+  one without deleting it, or remove anything CraftConsole itself installed.
 - **Automation** — backup jobs with on-demand or scheduled runs and restore into a chosen
   directory, and a scheduler with interval/daily/player-join/server-ready triggers and
   command/broadcast/restart/run-backup actions. Both backup jobs and tasks can be disabled
@@ -106,6 +116,11 @@ runs unprivileged there by design), set memory limits, and start.
 
 If this is a brand new server, Mojang requires accepting the EULA. CraftConsole detects the
 prompt and shows a banner with an Accept button; start the server again afterwards.
+
+Create more profiles the same way to run several servers side by side — each keeps its own
+console, players and status regardless of which one you're currently viewing. The switcher in
+the title bar shows every profile's live status and changes which one the rest of the panel
+displays.
 
 ---
 
@@ -283,8 +298,9 @@ clean runner, and publishes with `SHA256SUMS`.
 
 - **TLS is self-signed by default.** Real trust needs your own certificate — see [TLS](#tls).
 - **RCON connections are unencrypted**, regardless of the panel's own TLS setting — see above.
-- **One server at a time.** CraftConsole manages or attaches to a single server; running
-  several profiles simultaneously needs several instances of the panel.
+- **CurseForge needs an API key.** Get one at
+  [console.curseforge.com/#/api-keys](https://console.curseforge.com/#/api-keys) and add it
+  under **Settings → Integrations & about**. Modrinth needs none.
 - Machine CPU and memory gauges work on Windows and Linux. Other platforms show them as
   unavailable rather than guessing.
 - Player geolocation calls `ipinfo.io` without an API key. It is best-effort, rate-limited,

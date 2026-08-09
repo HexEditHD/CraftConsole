@@ -6,6 +6,7 @@ import { connectSse, on } from './bus.js';
 import { state, initStore, isAdmin } from './store.js';
 import { createServerControls } from './components/server-controls.js';
 import { createVitals } from './components/vitals.js';
+import { createServerSwitch } from './components/server-switch.js';
 
 import dashboard from './views/dashboard.js';
 import consoleView from './views/console.js';
@@ -40,7 +41,7 @@ const PHONE_OPERATOR = ['console', 'dashboard', 'players', 'issues', 'backups'];
 
 let activeCleanup = null;
 let navBadges = [];
-let vitals, controls;
+let vitals, controls, serverSwitch;
 
 // ── Sidebar ─────────────────────────────────────────────────────────────
 function buildNav() {
@@ -151,6 +152,10 @@ function syncSubtitle(view) {
 function buildTopbar() {
   document.getElementById('brand-icon').append(icon('cube'));
 
+  serverSwitch = createServerSwitch();
+  document.getElementById('server-switch').replaceWith(serverSwitch.el);
+  serverSwitch.el.id = 'server-switch';
+
   vitals = createVitals();
   document.getElementById('readings').replaceWith(vitals.el);
   vitals.el.id = 'readings';
@@ -163,11 +168,22 @@ function buildTopbar() {
 }
 
 function syncShell() {
+  serverSwitch?.sync();
   vitals?.sync();
   controls?.sync();
   syncIssueBadges();
   syncEulaBanner(state.status?.eulaRequired === true);
   syncSubtitle(currentView());
+}
+
+// ── Server context switch ──────────────────────────────────────────────
+// store.js has already re-hydrated state for the newly current server by the
+// time this fires; a full re-render is the simplest way to guarantee every
+// view drops whatever it had for the old one rather than trying to patch
+// each view's internal state individually.
+function onServerSwitched() {
+  route();
+  syncShell();
 }
 
 // ── EULA banner ─────────────────────────────────────────────────────────
@@ -234,6 +250,8 @@ function buildSignOut() {
   on('store:metrics', () => vitals?.sync());
   on('store:issues', syncIssueBadges);
   on('store:conn', syncConn);
+  on('store:servers', () => serverSwitch?.sync());
+  on('store:switched', onServerSwitched);
 
   connectSse();
 

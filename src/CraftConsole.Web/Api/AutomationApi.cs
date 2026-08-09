@@ -46,12 +46,22 @@ public static class AutomationApi
 
         // Admin-only: TargetDirectory is client-supplied and only Path.GetFullPath'd,
         // so this endpoint is effectively an arbitrary host write for whoever can call it.
+        //
+        // A backup job's source/destination paths are plain directories, not tied
+        // to any one server profile (see BackupJob), so there is no server id to
+        // scope this to — the guard below checks whichever server is currently
+        // active, same as pre-multi-server behaviour. It is an imperfect proxy in
+        // a world with several servers running at once (restoring could still
+        // collide with a *different* running server's files), but making this
+        // properly server-aware is a bigger change than this endpoint's current
+        // contract, and out of scope here.
         app.MapPost("/api/backups/{id:guid}/restore",
-            async (Guid id, RestoreRequest req, BackupService backups, ServerSupervisor sup) =>
+            async (Guid id, RestoreRequest req, BackupService backups, ProfilesService profiles, ServerRegistry registry) =>
         {
             // Restoring over a live world would fight the server for file handles
             // and be silently overwritten by the next autosave.
-            if (sup.Status is not (ServerStatus.Stopped or ServerStatus.Crashed))
+            var active = await ServerScope.ResolveActiveAsync(profiles, registry);
+            if (active is not null && active.Status is not (ServerStatus.Stopped or ServerStatus.Crashed))
                 return Results.BadRequest(new
                 {
                     Message = "Stop the server before restoring a backup — restoring over a running world would corrupt it."

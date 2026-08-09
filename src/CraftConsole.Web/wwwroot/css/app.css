@@ -237,6 +237,48 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #page-title { font-size: var(--t-lg); }
 #page-sub { font-size: var(--t-sm); color: var(--ink-mid); }
 
+/* Server switcher — its own titled cell: which drawing (screen) you're on
+   is #page-title's job, which server it's a drawing OF is this one's. A
+   dot rather than a full status-pill, since this sits beside readings that
+   are about to repeat the same state in more detail. */
+#server-switch { position: relative; border-left: 1px solid var(--rule); display: flex; align-items: center; }
+.server-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--n-300); }
+.server-dot.ok   { background: var(--good); }
+.server-dot.bad  { background: var(--bad); }
+.server-dot.warn { background: var(--warn); }
+
+.server-switch-trigger {
+  display: flex; align-items: center; gap: var(--s2);
+  background: none; border: none; padding: 0; margin: 0;
+  font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink);
+  cursor: pointer;
+}
+.server-switch-trigger:disabled { cursor: default; }
+/* Only a real affordance once there's something to switch to. */
+.server-switch-trigger:not(.has-menu) .icon { display: none; }
+.server-switch-trigger .icon { width: 11px; height: 11px; color: var(--ink-low); transition: transform var(--fast); }
+.server-switch-trigger[aria-expanded="true"] .icon { transform: rotate(180deg); }
+
+.server-switch-menu {
+  position: absolute; top: calc(100% + var(--s2)); left: var(--s4); z-index: 20;
+  min-width: 240px; max-height: 320px; overflow-y: auto;
+  background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0,6,14,.55);
+}
+.server-switch-item {
+  display: flex; align-items: center; gap: var(--s2); width: 100%;
+  padding: var(--s2) var(--s3);
+  background: none; border: none; border-bottom: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid);
+  cursor: pointer; text-align: left;
+  transition: background var(--fast), color var(--fast);
+}
+.server-switch-item:last-child { border-bottom: none; }
+.server-switch-item:hover { background: var(--sheet-3); color: var(--ink); }
+.server-switch-item.current { color: var(--blue); background: var(--blue-wash); }
+.server-switch-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-switch-item .count { flex-shrink: 0; font-size: var(--t-xs); color: var(--ink-low); }
+
 /* Readings sit in their own cells of the title block. */
 .readings { display: flex; margin-left: auto; flex-shrink: 0; }
 .reading { padding: var(--s3) var(--s4); border-left: 1px solid var(--rule); min-width: 92px; }
@@ -480,21 +522,13 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .follow.on .pip { animation: blink 1.8s steps(1, end) infinite; }
 @keyframes blink { 0%, 62% { opacity: 1; } 63%, 100% { opacity: .25; } }
 
-/* The log sits on the grid — the one place the drawing surface shows
-   through behind live data. Ruled, not dotted: BLUEPRINT stipples its
-   sheet because dots stay quiet under dark text on white, but on the
-   print the grid is a drawn line like everything else.
-
-   Line-height comes down from BLUEPRINT's 1.7 — light mono on a dark
+/* Line-height comes down from BLUEPRINT's 1.7 — light mono on a dark
    ground already reads open, and this sheet is scanned at MISSION
    CONTROL's density. */
 .log {
   flex: 1; overflow-y: auto;
   padding: var(--s2) var(--s3);
   background-color: var(--sheet-2);
-  background-image: linear-gradient(to right,  var(--grid) 1px, transparent 1px),
-                    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-  background-size: var(--grid-pitch) var(--grid-pitch);
   font-family: var(--f-mono); font-size: var(--t-sm); line-height: 1.55;
   overscroll-behavior: contain;
 }
@@ -652,6 +686,13 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   .setup-split { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Modrinth search results — a project card is wider than a server-type card
+   (title, author, a description line) so the minimum track is wider too. */
+.modrinth-results { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: var(--s3); }
+.modrinth-card-icon { width: 40px; height: 40px; border-radius: var(--r); flex-shrink: 0; object-fit: cover; }
+.modrinth-card-icon.placeholder { display: flex; align-items: center; justify-content: center; background: var(--sheet-3); color: var(--ink-low); }
+.modrinth-card-icon.placeholder .icon { width: 18px; height: 18px; }
+
 /* Folder picker */
 /* A path input with its Browse button. align-items:start so the button sits
    at the top of a multi-line sources textarea rather than centred against it. */
@@ -717,10 +758,23 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
    ══════════════════════════════════════════════════════════════════════ */
 .editor-layout { display: flex; gap: var(--s3); height: 100%; min-height: 0; }
 
-.file-tree {
-  width: 236px; flex-shrink: 0; overflow-y: auto; padding: var(--s2);
+.file-tree-pane {
+  width: 236px; flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
   background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  transition: outline-color var(--fast);
+  outline: 2px dashed transparent; outline-offset: -2px;
 }
+/* A drop anywhere on the pane that isn't over a folder row lands at the
+   tree root — see the dragover/drop handlers bound directly on this
+   element in editor.js. */
+.file-tree-pane.drop-target { outline-color: var(--blue); }
+.tree-header {
+  display: flex; align-items: center; gap: var(--s2);
+  padding: var(--s2);
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-mid);
+}
+.file-tree { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s2); }
 .tree-node.collapsed > .tree-children { display: none; }
 /* Leader lines down the index, the way a drawing tree is ruled. */
 .tree-children { margin-left: var(--s3); padding-left: var(--s1); border-left: 1px solid var(--rule); }
@@ -734,9 +788,22 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 .tree-row .icon { width: 13px; height: 13px; flex-shrink: 0; color: var(--ink-low); transition: transform var(--fast); }
 .tree-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row .size { flex-shrink: 0; font-size: 9.5px; color: var(--ink-low); }
+/* Not openable in the editor — no hover affordance beyond the download button. */
+.tree-row.non-editable { cursor: default; }
+.tree-row.non-editable:hover { background: transparent; color: var(--ink-mid); }
+.tree-row .btn.icon-only { flex-shrink: 0; opacity: .45; transition: opacity var(--fast); }
+.tree-row:hover .btn.icon-only { opacity: 1; }
+/* The folder currently under a dragged file. */
+.tree-row.drop-target { background: var(--blue-wash); color: var(--blue); }
 /* The file currently being marked up. */
 .tree-row.open-file { background: var(--blue-wash); color: var(--blue); }
 .tree-row.open-file .icon { color: var(--blue); }
+
+.upload-progress {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--s2); border-top: 1px solid var(--rule);
+  font-family: var(--f-mono); font-size: 9.5px; color: var(--ink-mid);
+}
 
 .editor-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r); overflow: hidden; }
 .editor-tabs { display: flex; overflow-x: auto; min-height: 29px; background: var(--sheet-2); border-bottom: 1px solid var(--rule-firm); }
@@ -789,7 +856,8 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
   #sidebar { display: none; }
   #titleblock { flex-wrap: wrap; }
   .tb-cell, .controls { padding: var(--s2) var(--s3); }
-  .controls { border-left: none; }
+  .controls, #server-switch { border-left: none; }
+  .server-switch-menu { left: 0; right: 0; min-width: 0; }
   .readings { order: 3; flex-basis: 100%; margin-left: 0; overflow-x: auto; border-top: 1px solid var(--rule); }
   .reading { padding: var(--s2) var(--s3); min-width: 84px; }
   .reading:first-child { border-left: none; }
