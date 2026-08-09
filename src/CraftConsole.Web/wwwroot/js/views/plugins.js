@@ -1,13 +1,15 @@
 // Plugins: Installed (scan the active server's plugins folder, disable jars,
-// remove anything installed via Modrinth) and Browse (search Modrinth and
-// install a plugin/mod, with a prompt for required dependencies).
+// remove anything installed via Modrinth/CurseForge) and Browse (search
+// either provider and install a plugin/mod, with a prompt for required
+// dependencies).
 import { h, icon, toast, confirmDialog, debounce } from '../ui.js';
 import { api } from '../api.js';
+import { state } from '../store.js';
 
 export default {
   id: 'plugins',
   title: 'Plugins',
-  subtitle: 'Installed jars and Modrinth search',
+  subtitle: 'Installed jars, Modrinth and CurseForge search',
   icon: 'puzzle',
 
   render(el) {
@@ -43,12 +45,52 @@ export default {
   },
 };
 
+// ── Providers ────────────────────────────────────────────────────────────
+// Search/install differ enough between the two (Modrinth installs by a
+// single versionId it resolves itself; CurseForge needs a modId *and* a
+// fileId, and gates everything behind an API key) that each gets its own
+// adapter rather than forcing a shared shape. Everything that reads a
+// dependency/install name checks both projectTitle (Modrinth) and modName
+// (CurseForge) — see depName/installName below.
+const PROVIDERS = {
+  modrinth: {
+    label: 'Modrinth',
+    placeholder: 'Search Modrinth…',
+    available: () => true,
+    unavailableReason: '',
+    search: query => api.get(`/api/modrinth/search?query=${encodeURIComponent(query)}&limit=24`),
+    normalizeHit: h => ({ key: h.projectId, title: h.title, author: h.author, downloads: h.downloads, iconUrl: h.iconUrl, description: h.description }),
+    resolveTarget: async hit => {
+      const versions = await api.get(`/api/modrinth/versions?projectId=${encodeURIComponent(hit.key)}`);
+      return versions.length ? { versionId: versions[0].id } : null;
+    },
+    install: (target, includeDependencies) => api.post('/api/modrinth/install', { versionId: target.versionId, includeDependencies }),
+  },
+  curseforge: {
+    label: 'CurseForge',
+    placeholder: 'Search CurseForge…',
+    available: () => !!state.settings?.hasCurseForgeApiKey,
+    unavailableReason: 'Add a CurseForge API key in Settings → Integrations & about to browse CurseForge.',
+    search: query => api.get(`/api/curseforge/search?query=${encodeURIComponent(query)}&limit=24`),
+    normalizeHit: h => ({ key: h.modId, title: h.name, author: h.author, downloads: h.downloads, iconUrl: h.iconUrl, description: h.summary }),
+    resolveTarget: async hit => {
+      const files = await api.get(`/api/curseforge/files?modId=${encodeURIComponent(hit.key)}`);
+      return files.length ? { modId: hit.key, fileId: files[0].id } : null;
+    },
+    install: (target, includeDependencies) => api.post('/api/curseforge/install', { modId: target.modId, fileId: target.fileId, includeDependencies }),
+  },
+};
+
+const depName = d => d.projectTitle ?? d.modName;
+const installName = i => i.projectTitle ?? i.modName;
+
 // ── Installed ────────────────────────────────────────────────────────────
 function renderInstalledTab(container) {
   const modrinthList = h('div');
-  const modrinthCard = h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, 'Installed via Modrinth'),
-    modrinthList);
+  const curseForgeList = h('div');
+  container.append(
+    h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Installed via Modrinth'), modrinthList),
+    h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Installed via CurseForge'), curseForgeList));
 
   const folderLabel = h('span', { class: 'sub mono ellipsis', style: { maxWidth: '440px' } }, '');
   const scanBody = h('div');
@@ -63,7 +105,29 @@ function renderInstalledTab(container) {
       h('button', { class: 'btn sm', onclick: loadScan }, icon('refresh'), 'Re-scan')),
     scanBody);
 
-  container.append(modrinthCard, scanSection);
+  container.append(scanSection);
+
+  function trackedTable(items, { nameKey, idKey, idParam, apiPrefix, emptyMessage }) {
+    if (!items.length) return h('div', { class: 'empty-sub' }, emptyMessage);
+
+    return h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'File'), h('th', {}))),
+      h('tbody', {}, items.map(i => h('tr', {},
+        h('td', { style: { fontWeight: 600 } }, i[nameKey]),
+        h('td', { class: 'dim small mono' }, i.fileName),
+        h('td', {}, h('button', {
+          class: 'btn sm danger', title: 'Delete the file and forget this install',
+          onclick: async () => {
+            if (!await confirmDialog('Remove', `Delete "${i.fileName}" and forget this install?`, { danger: true, okLabel: 'Remove' })) return;
+            try {
+              await api.del(`/api/${apiPrefix}/${encodeURIComponent(i[idKey])}`);
+              toast(`${i[nameKey]} removed`);
+              loadModrinthList();
+              loadCurseForgeList();
+            } catch (err) { toast(err.message, 'err'); }
+          },
+        }, icon('trash'))))))));
+  }
 
   async function loadModrinthList() {
     modrinthList.innerHTML = '';
@@ -72,30 +136,23 @@ function renderInstalledTab(container) {
     try { items = await api.get('/api/modrinth/installed'); }
     catch { items = []; }
     modrinthList.innerHTML = '';
+    modrinthList.append(trackedTable(items, {
+      nameKey: 'projectTitle', idKey: 'projectId', apiPrefix: 'modrinth',
+      emptyMessage: 'Nothing installed via Modrinth yet — try the Browse tab.',
+    }));
+  }
 
-    if (!items.length) {
-      modrinthList.append(h('div', { class: 'empty-sub' }, 'Nothing installed via Modrinth yet — try the Browse tab.'));
-      return;
-    }
-
-    modrinthList.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {},
-        h('th', {}, 'Project'), h('th', {}, 'Version'), h('th', {}, 'File'), h('th', {}))),
-      h('tbody', {}, items.map(i => h('tr', {},
-        h('td', { style: { fontWeight: 600 } }, i.projectTitle),
-        h('td', {}, h('span', { class: 'tag' }, i.versionNumber)),
-        h('td', { class: 'dim small mono' }, i.fileName),
-        h('td', {}, h('button', {
-          class: 'btn sm danger', title: 'Delete the file and forget this install',
-          onclick: async () => {
-            if (!await confirmDialog('Remove', `Delete "${i.fileName}" and forget this install?`, { danger: true, okLabel: 'Remove' })) return;
-            try {
-              await api.del(`/api/modrinth/${encodeURIComponent(i.projectId)}`);
-              toast(`${i.projectTitle} removed`);
-              loadModrinthList();
-            } catch (err) { toast(err.message, 'err'); }
-          },
-        }, icon('trash')))))))));
+  async function loadCurseForgeList() {
+    curseForgeList.innerHTML = '';
+    curseForgeList.append(h('div', { class: 'dl-status' }, h('span', { class: 'spinner' }), 'Loading…'));
+    let items;
+    try { items = await api.get('/api/curseforge/installed'); }
+    catch { items = []; }
+    curseForgeList.innerHTML = '';
+    curseForgeList.append(trackedTable(items, {
+      nameKey: 'modName', idKey: 'modId', apiPrefix: 'curseforge',
+      emptyMessage: 'Nothing installed via CurseForge yet — try the Browse tab.',
+    }));
   }
 
   async function loadScan() {
@@ -153,44 +210,83 @@ function renderInstalledTab(container) {
   }
 
   loadModrinthList();
+  loadCurseForgeList();
   loadScan();
 }
 
 // ── Browse ───────────────────────────────────────────────────────────────
 function renderBrowseTab(container) {
-  const searchInput = h('input', { type: 'search', placeholder: 'Search Modrinth…' });
+  let providerKey = 'modrinth';
+
+  const providerSeg = h('div', { class: 'seg', style: { marginBottom: 'var(--s3)' } });
+  const searchInput = h('input', { type: 'search' });
   const searchBox = h('div', { class: 'console-search', style: { maxWidth: '420px' } }, icon('search'), searchInput);
   const status = h('div', { class: 'dl-status' });
   const results = h('div', { class: 'grid modrinth-results' });
 
   container.append(h('div', { class: 'card' },
-    h('div', { class: 'card-title' }, 'Browse Modrinth'),
+    h('div', { class: 'card-title' }, 'Browse'),
+    providerSeg,
     searchBox, status, results));
+
+  function buildProviderSeg() {
+    providerSeg.innerHTML = '';
+    for (const [key, provider] of Object.entries(PROVIDERS)) {
+      providerSeg.append(h('button', {
+        class: `seg-item${providerKey === key ? ' active' : ''}`,
+        onclick: () => {
+          if (providerKey === key) return;
+          providerKey = key;
+          buildProviderSeg();
+          syncForProvider();
+        },
+      }, provider.label));
+    }
+  }
+
+  function syncForProvider() {
+    const provider = PROVIDERS[providerKey];
+    searchInput.placeholder = provider.placeholder;
+    if (!provider.available()) {
+      searchBox.style.display = 'none';
+      status.innerHTML = '';
+      results.innerHTML = '';
+      results.append(h('div', { class: 'empty', style: { padding: '26px 10px', gridColumn: '1 / -1' } },
+        icon('info'),
+        h('div', { class: 'empty-title' }, 'Not available'),
+        h('div', { class: 'empty-sub' }, provider.unavailableReason)));
+      return;
+    }
+    searchBox.style.display = '';
+    runSearch();
+  }
 
   searchInput.addEventListener('input', debounce(runSearch, 350));
 
   async function runSearch() {
+    const provider = PROVIDERS[providerKey];
     status.innerHTML = '';
     status.append(h('span', { class: 'spinner' }), 'Searching…');
     results.innerHTML = '';
 
     let data;
-    try { data = await api.get(`/api/modrinth/search?query=${encodeURIComponent(searchInput.value.trim())}&limit=24`); }
+    try { data = await provider.search(searchInput.value.trim()); }
     catch (err) { status.innerHTML = ''; toast(err.message, 'err'); return; }
     status.innerHTML = '';
 
-    if (!data.hits?.length) {
+    const hits = (data.hits ?? []).map(provider.normalizeHit);
+    if (!hits.length) {
       results.append(h('div', { class: 'empty', style: { padding: '26px 10px', gridColumn: '1 / -1' } },
         icon('puzzle'),
         h('div', { class: 'empty-title' }, 'No results'),
         h('div', { class: 'empty-sub' }, 'Try a different search — or this server type has no plugin or mod ecosystem.')));
       return;
     }
-    for (const hit of data.hits) results.append(hitCard(hit));
+    for (const hit of hits) results.append(hitCard(provider, hit));
   }
 
-  function hitCard(hit) {
-    const installBtn = h('button', { class: 'btn sm primary', onclick: () => install(hit, installBtn) }, icon('download'), 'Install');
+  function hitCard(provider, hit) {
+    const installBtn = h('button', { class: 'btn sm primary', onclick: () => install(provider, hit, installBtn) }, icon('download'), 'Install');
     return h('div', { class: 'card', style: { padding: '12px 14px' } },
       h('div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-start' } },
         hit.iconUrl
@@ -203,31 +299,32 @@ function renderBrowseTab(container) {
       h('div', { style: { marginTop: '10px', display: 'flex', justifyContent: 'flex-end' } }, installBtn));
   }
 
-  async function install(hit, btn) {
+  async function install(provider, hit, btn) {
     btn.disabled = true;
     try {
-      const versions = await api.get(`/api/modrinth/versions?projectId=${encodeURIComponent(hit.projectId)}`);
-      if (!versions.length) { toast(`No version of "${hit.title}" is compatible with this server.`, 'err'); return; }
-      await installVersion(versions[0].id, hit.title);
+      const target = await provider.resolveTarget(hit);
+      if (!target) { toast(`No file of "${hit.title}" is compatible with this server.`, 'err'); return; }
+      await installTarget(provider, target, hit.title);
     } catch (err) { toast(err.message, 'err'); }
     finally { btn.disabled = false; }
   }
 
-  async function installVersion(versionId, title, includeDependencies = false) {
-    const result = await api.post('/api/modrinth/install', { versionId, includeDependencies });
+  async function installTarget(provider, target, title, includeDependencies = false) {
+    const result = await provider.install(target, includeDependencies);
 
     if (result.needsDependencyConfirmation) {
-      const names = result.requiredDependencies.map(d => d.projectTitle).join(', ');
+      const names = result.requiredDependencies.map(depName).join(', ');
       if (await confirmDialog('Required dependencies', `"${title}" requires: ${names}. Install them too?`, { okLabel: 'Install all' })) {
-        await installVersion(versionId, title, true);
+        await installTarget(provider, target, title, true);
       } else {
         toast(`"${title}" needs its required dependencies — not installed.`, 'err');
       }
       return;
     }
 
-    toast(`Installed ${result.installed.map(i => i.projectTitle).join(', ')}`);
+    toast(`Installed ${result.installed.map(installName).join(', ')}`);
   }
 
-  runSearch();
+  buildProviderSeg();
+  syncForProvider();
 }

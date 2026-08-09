@@ -56,6 +56,8 @@ builder.Services.AddSingleton<ServerDownloadService>();
 builder.Services.AddSingleton<JavaDownloadService>();
 builder.Services.AddSingleton<ModrinthClient>();
 builder.Services.AddSingleton<ModrinthService>();
+builder.Services.AddSingleton<CurseForgeClient>();
+builder.Services.AddSingleton<CurseForgeService>();
 
 // Key ring pinned to the app data directory: the default location ignores
 // --data-dir, which would leave the Debian service unable to decrypt RCON
@@ -64,6 +66,7 @@ builder.Services.AddDataProtection()
     .SetApplicationName("CraftConsole")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(appDataPath, "dpkeys")));
 builder.Services.AddSingleton<RconSecretStore>();
+builder.Services.AddSingleton<CurseForgeSecretStore>();
 
 // TLS certificate resolution has to happen before Build() so Kestrel's HTTPS defaults can be
 // wired up — but the DI-registered IDataProtectionProvider above only exists after Build().
@@ -215,6 +218,7 @@ app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
 app.MapModrinthApi();
+app.MapCurseForgeApi();
 app.MapSystemApi();
 app.MapUsersApi();
 

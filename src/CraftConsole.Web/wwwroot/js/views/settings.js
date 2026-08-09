@@ -191,6 +191,64 @@ function usersCard() {
   return card;
 }
 
+// Write-only, same convention as the RCON password field on a profile: the
+// key itself is never read back, only whether one is set (state.settings's
+// hasCurseForgeApiKey — see SetupApi's settings snapshot).
+function curseForgeCard() {
+  const status = h('p', { class: 'dim small' });
+  const keyInput = h('input', { class: 'input', type: 'password', placeholder: 'CurseForge API key', autocomplete: 'off' });
+  const submit = h('button', { class: 'btn primary sm', type: 'submit' }, 'Save');
+  const removeBtn = h('button', { class: 'btn sm ghost', type: 'button' }, 'Remove');
+
+  const syncStatus = () => {
+    const has = !!state.settings?.hasCurseForgeApiKey;
+    status.textContent = has
+      ? 'An API key is set.'
+      : 'No API key set — Browse → CurseForge is unavailable until one is added.';
+    removeBtn.style.display = has ? '' : 'none';
+  };
+
+  removeBtn.addEventListener('click', async () => {
+    if (!await confirmDialog('Remove API key',
+      'Remove the stored CurseForge API key? Browse → CurseForge stops working until a new one is added.',
+      { danger: true, okLabel: 'Remove' })) return;
+    try {
+      await api.del('/api/settings/curseforge-key');
+      state.settings.hasCurseForgeApiKey = false;
+      syncStatus();
+      toast('CurseForge API key removed');
+    } catch (err) { toast(err.message, 'err'); }
+  });
+
+  const form = h('form', {
+    onsubmit: async e => {
+      e.preventDefault();
+      const value = keyInput.value.trim();
+      if (!value) return;
+      submit.disabled = true;
+      try {
+        await api.put('/api/settings/curseforge-key', { apiKey: value });
+        state.settings.hasCurseForgeApiKey = true;
+        keyInput.value = '';
+        syncStatus();
+        toast('CurseForge API key saved');
+      } catch (err) { toast(err.message, 'err'); }
+      finally { submit.disabled = false; }
+    },
+  },
+    h('div', { class: 'field' }, h('label', {}, 'API key'), keyInput),
+    h('div', { style: { display: 'flex', gap: '8px' } }, submit, removeBtn));
+
+  syncStatus();
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-title' }, 'CurseForge'),
+    status,
+    h('p', { class: 'dimmer small' },
+      'Required to browse and install from CurseForge — get one at console.curseforge.com/#/api-keys. Modrinth needs no key.'),
+    form);
+}
+
 function securityCard() {
   const current = h('input', { class: 'input', type: 'password', autocomplete: 'current-password', placeholder: 'Current password' });
   const next = h('input', { class: 'input', type: 'password', autocomplete: 'new-password', placeholder: 'New password (min. 8 characters)' });
@@ -330,18 +388,20 @@ export default {
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
     // usersCard()/tlsCard() self-load over the API on construction — build
-    // them (and securityCard(), for consistency) only once their tab is
-    // actually visited, and cache the result so revisiting doesn't re-fetch.
-    let securityEl = null, usersEl = null, tlsEl = null;
+    // them (and securityCard()/curseForgeCard(), for consistency) only once
+    // their tab is actually visited, and cache the result so revisiting
+    // doesn't re-fetch.
+    let securityEl = null, usersEl = null, tlsEl = null, curseForgeEl = null;
     const getSecurity = () => securityEl ??= securityCard();
     const getUsers = () => usersEl ??= usersCard();
     const getTls = () => tlsEl ??= tlsCard();
+    const getCurseForge = () => curseForgeEl ??= curseForgeCard();
 
     const TABS = [
       ['console', 'Console'],
       ['security', 'Security'],
       ['users', 'Users'],
-      ['tls', 'TLS & about'],
+      ['tls', 'Integrations & about'],
     ];
     let activeTab = 'console';
     const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--s4)' } });
@@ -362,7 +422,7 @@ export default {
       if (activeTab === 'console') body.append(consoleCard, colorsCard);
       else if (activeTab === 'security') body.append(getSecurity());
       else if (activeTab === 'users') body.append(getUsers());
-      else body.append(getTls(), aboutCard);
+      else body.append(getTls(), getCurseForge(), aboutCard);
     }
 
     buildTabs();

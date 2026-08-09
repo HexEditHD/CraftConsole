@@ -246,10 +246,15 @@ public static class SetupApi
         }).RequireRole(Role.Admin);
 
         // ── Settings ──────────────────────────────────────────────────────
-        app.MapGet("/api/settings", (SettingsHolder settings) =>
-            Results.Json(settings.Current, Json.Options)).RequireRole(Role.Admin);
+        // Projected rather than returning AppSettings wholesale: HasCurseForgeApiKey
+        // is computed (the key itself lives in CurseForgeSecretStore, encrypted,
+        // never serialized here), and AppSettings carries a few internal fields
+        // (ActiveProfileId, Theme, MinimizeToTray) nothing in the frontend reads
+        // from this endpoint.
+        app.MapGet("/api/settings", async (SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
+            Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options)).RequireRole(Role.Admin);
 
-        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings) =>
+        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
         {
             await settings.UpdateAsync(s =>
             {
@@ -262,7 +267,20 @@ public static class SetupApi
                 s.ColorError = dto.ColorError;
                 s.ColorPlayer = dto.ColorPlayer;
             });
-            return Results.Json(settings.Current, Json.Options);
+            return Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options);
         }).RequireRole(Role.Admin);
     }
+
+    private static async Task<object> SettingsSnapshot(SettingsHolder settings, CurseForgeSecretStore curseForgeKey) => new
+    {
+        settings.Current.ShowTimestamp,
+        settings.Current.ShowDate,
+        settings.Current.AutoScrollConsole,
+        settings.Current.MaxConsoleLines,
+        settings.Current.ColorInfo,
+        settings.Current.ColorWarn,
+        settings.Current.ColorError,
+        settings.Current.ColorPlayer,
+        HasCurseForgeApiKey = await curseForgeKey.HasAsync(),
+    };
 }
