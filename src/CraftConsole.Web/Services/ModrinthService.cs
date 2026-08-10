@@ -11,12 +11,15 @@ public record ModrinthRequiredDependency(string ProjectId, string ProjectTitle);
 /// version has required dependencies the caller hasn't confirmed yet — nothing
 /// is written to disk in that case. Call InstallAsync again with
 /// includeDependencies: true to install the version and every required
-/// dependency together.
+/// dependency together. Warnings covers partial successes — the file is
+/// installed, but something adjacent needs a human (most often: a stale jar
+/// from a previous version couldn't be removed because the server is running).
 /// </summary>
 public record ModrinthInstallResult(
     bool NeedsDependencyConfirmation,
     List<ModrinthRequiredDependency> RequiredDependencies,
-    List<ModrinthInstall> Installed);
+    List<ModrinthInstall> Installed,
+    List<string> Warnings);
 
 /// <summary>
 /// Search and install orchestration for the Plugins screen's Browse tab.
@@ -98,10 +101,14 @@ public sealed class ModrinthService
                 if (projectId is null) continue;
                 deps.Add(new ModrinthRequiredDependency(projectId, await _client.GetProjectTitleAsync(projectId, ct)));
             }
-            return new ModrinthInstallResult(true, deps, []);
+            return new ModrinthInstallResult(true, deps, [], []);
         }
 
-        List<ModrinthInstall> installed = [await InstallOneAsync(sup, version, ct)];
+        List<ModrinthInstall> installed = [];
+        List<string> warnings = [];
+        var (primary, primaryWarning) = await InstallOneAsync(sup, version, ct);
+        installed.Add(primary);
+        if (primaryWarning is not null) warnings.Add(primaryWarning);
 
         if (includeDependencies)
         {
@@ -120,14 +127,20 @@ public sealed class ModrinthService
                 }
                 // No compatible version found for this dependency — skip it rather
                 // than failing the whole install; the primary file already succeeded.
-                if (depVersion is not null) installed.Add(await InstallOneAsync(sup, depVersion, ct));
+                if (depVersion is not null)
+                {
+                    var (depInstall, depWarning) = await InstallOneAsync(sup, depVersion, ct);
+                    installed.Add(depInstall);
+                    if (depWarning is not null) warnings.Add(depWarning);
+                }
             }
         }
 
-        return new ModrinthInstallResult(false, [], installed);
+        return new ModrinthInstallResult(false, [], installed, warnings);
     }
 
-    private async Task<ModrinthInstall> InstallOneAsync(ServerSupervisor sup, ModrinthVersion version, CancellationToken ct)
+    private async Task<(ModrinthInstall Install, string? Warning)> InstallOneAsync(
+        ServerSupervisor sup, ModrinthVersion version, CancellationToken ct)
     {
         var profile = sup.ActiveProfile!;
         var dir = Path.Combine(profile.WorkingDirectory, TargetFolder(profile.Type));
@@ -137,7 +150,13 @@ public sealed class ModrinthService
         // Modrinth-supplied, not user input, but it still flows into a filesystem
         // path — GetFileName strips any directory component defensively.
         var fileName = Path.GetFileName(file.FileName);
-        await _downloader.DownloadFileAsync(file.Url, Path.Combine(dir, fileName), null, ct);
+
+        // A re-install of this project replaces the tracked entry (see TrackAsync
+        // below) — look up what it's replacing before writing, so the writer can
+        // clean up the old file when the new one has a different name.
+        var previousFileName = (await LoadAsync())
+            .FirstOrDefault(i => i.ServerId == sup.ServerId && i.ProjectId == version.ProjectId)?.FileName;
+        var warning = await InstalledJarWriter.WriteAsync(_downloader, file.Url, dir, fileName, previousFileName, ct);
 
         var install = new ModrinthInstall
         {
@@ -150,7 +169,7 @@ public sealed class ModrinthService
             InstalledAt = DateTimeOffset.UtcNow,
         };
         await TrackAsync(install);
-        return install;
+        return (install, warning);
     }
 
     public async Task<List<ModrinthInstall>> ListInstalledAsync(ServerSupervisor sup)
@@ -161,8 +180,26 @@ public sealed class ModrinthService
         var install = (await ListInstalledAsync(sup)).FirstOrDefault(i => i.ProjectId == projectId);
         if (install is null) return false;
 
+        // A tracked install can outlive the process that made it — the store
+        // has no cleanup of its own — so this can be reached for a profile that
+        // has never been started this run, whose ActiveProfile is still null.
+        if (sup.LocalFileUnavailableReason is { } reason)
+            throw new InvalidOperationException(reason);
+
         var path = Path.Combine(sup.ActiveProfile!.WorkingDirectory, TargetFolder(sup.ActiveProfile.Type), install.FileName);
-        if (File.Exists(path)) File.Delete(path);
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Don't drop the tracking row on a failed delete — that would orphan
+            // the file on disk with nothing left pointing at it, and no way to
+            // retry from the UI.
+            throw new InvalidOperationException(
+                $"Could not remove \"{install.FileName}\" — if the server is running it may be " +
+                "holding it open. Stop it and try again.", ex);
+        }
 
         await _gate.WaitAsync();
         try
