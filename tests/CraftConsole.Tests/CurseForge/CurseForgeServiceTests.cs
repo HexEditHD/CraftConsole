@@ -39,6 +39,12 @@ public class CurseForgeServiceTests
             return this;
         }
 
+        public StubHandler Status(HttpStatusCode code)
+        {
+            _responses.Enqueue(() => new HttpResponseMessage(code));
+            return this;
+        }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             RequestUris.Add(request.RequestUri!);
@@ -386,6 +392,95 @@ public class CurseForgeServiceTests
     }
 
     [Fact]
+    public async Task Updating_to_a_differently_named_jar_deletes_the_one_it_replaces()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        string FileBody(int fileId, string fileName) => $$$"""
+            {"data":{"id":{{{fileId}}},"modId":100,"fileName":"{{{fileName}}}","downloadUrl":"https://cdn.example/{{{fileName}}}","fileLength":5,"gameVersions":[]}}
+            """;
+        var handler = new StubHandler()
+            .Json(FileBody(1, "plugin-1.0.0.jar")).Bytes("v1-bytes").Json("""{"data":{"name":"My Plugin"}}""")
+            .Json(FileBody(2, "plugin-2.0.0.jar")).Bytes("v2-bytes").Json("""{"data":{"name":"My Plugin"}}""");
+        var service = NewService(handler, started.ApiKey, started.Settings);
+
+        await service.InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+        var result = await service.InstallAsync(started.Supervisor, 100, 2, includeDependencies: false, CancellationToken.None);
+
+        Assert.Empty(result.Warnings);
+        var pluginsDir = Path.Combine(started.WorkingDirectory, "plugins");
+        Assert.False(File.Exists(Path.Combine(pluginsDir, "plugin-1.0.0.jar")));
+        Assert.True(File.Exists(Path.Combine(pluginsDir, "plugin-2.0.0.jar")));
+        var listed = Assert.Single(await service.ListInstalledAsync(started.Supervisor));
+        Assert.Equal("plugin-2.0.0.jar", listed.FileName);
+    }
+
+    [Fact]
+    public async Task Install_leaves_the_previous_jar_untouched_when_the_download_fails()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        string FileBody(int fileId, string fileName) => $$$"""
+            {"data":{"id":{{{fileId}}},"modId":100,"fileName":"{{{fileName}}}","downloadUrl":"https://cdn.example/{{{fileName}}}","fileLength":5,"gameVersions":[]}}
+            """;
+        var handler = new StubHandler()
+            .Json(FileBody(1, "plugin-1.0.0.jar")).Bytes("v1-bytes").Json("""{"data":{"name":"My Plugin"}}""")
+            .Json(FileBody(2, "plugin-2.0.0.jar")).Status(HttpStatusCode.InternalServerError);
+        var service = NewService(handler, started.ApiKey, started.Settings);
+        await service.InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.InstallAsync(started.Supervisor, 100, 2, includeDependencies: false, CancellationToken.None));
+
+        var pluginsDir = Path.Combine(started.WorkingDirectory, "plugins");
+        Assert.Equal("v1-bytes", await File.ReadAllTextAsync(Path.Combine(pluginsDir, "plugin-1.0.0.jar")));
+        Assert.Single(Directory.GetFiles(pluginsDir));
+    }
+
+    [Fact]
+    public async Task Install_leaves_no_temporary_file_behind()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        const string fileBody = """
+            {"data":{"id":999,"modId":12345,"fileName":"plugin.jar","downloadUrl":"https://cdn.example/plugin.jar","fileLength":5,"gameVersions":[]}}
+            """;
+        var handler = new StubHandler().Json(fileBody).Bytes("hello").Json("""{"data":{"name":"My Plugin"}}""");
+        var service = NewService(handler, started.ApiKey, started.Settings);
+
+        await service.InstallAsync(started.Supervisor, 12345, 999, includeDependencies: false, CancellationToken.None);
+
+        Assert.Single(Directory.GetFiles(Path.Combine(started.WorkingDirectory, "plugins")));
+    }
+
+    [Fact]
+    public async Task Update_reports_a_warning_when_the_stale_jar_cannot_be_deleted()
+    {
+        if (!OperatingSystem.IsWindows()) return; // POSIX unlink succeeds on an open file
+
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        string FileBody(int fileId, string fileName) => $$$"""
+            {"data":{"id":{{{fileId}}},"modId":100,"fileName":"{{{fileName}}}","downloadUrl":"https://cdn.example/{{{fileName}}}","fileLength":5,"gameVersions":[]}}
+            """;
+        var handler = new StubHandler()
+            .Json(FileBody(1, "plugin-1.0.0.jar")).Bytes("v1-bytes").Json("""{"data":{"name":"My Plugin"}}""")
+            .Json(FileBody(2, "plugin-2.0.0.jar")).Bytes("v2-bytes").Json("""{"data":{"name":"My Plugin"}}""");
+        var service = NewService(handler, started.ApiKey, started.Settings);
+        await service.InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        var oldPath = Path.Combine(started.WorkingDirectory, "plugins", "plugin-1.0.0.jar");
+        await using (new FileStream(oldPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var result = await service.InstallAsync(started.Supervisor, 100, 2, includeDependencies: false, CancellationToken.None);
+
+            var warning = Assert.Single(result.Warnings);
+            Assert.Contains("plugin-2.0.0.jar", warning);
+            Assert.Contains("plugin-1.0.0.jar", warning);
+        }
+
+        Assert.True(File.Exists(Path.Combine(started.WorkingDirectory, "plugins", "plugin-2.0.0.jar")));
+        var listed = Assert.Single(await service.ListInstalledAsync(started.Supervisor));
+        Assert.Equal("plugin-2.0.0.jar", listed.FileName);
+    }
+
+    [Fact]
     public async Task Remove_deletes_the_file_and_forgets_the_install()
     {
         await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
@@ -403,6 +498,56 @@ public class CurseForgeServiceTests
         Assert.True(removed);
         Assert.False(File.Exists(jarPath));
         Assert.Empty(await service.ListInstalledAsync(started.Supervisor));
+    }
+
+    [Fact]
+    public async Task Remove_reports_a_clear_error_when_the_server_has_never_been_started()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        const string fileBody = """
+            {"data":{"id":999,"modId":12345,"fileName":"plugin.jar","downloadUrl":"https://cdn.example/plugin.jar","fileLength":5,"gameVersions":[]}}
+            """;
+        var service = NewService(new StubHandler().Json(fileBody).Bytes("hello").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings);
+        await service.InstallAsync(started.Supervisor, 12345, 999, includeDependencies: false, CancellationToken.None);
+
+        // A tracked install can outlive the process that made it — this supervisor
+        // shares the tracked install's ServerId but was never started, so its
+        // ActiveProfile is null, the same shape ServerScope hands back for a
+        // profile nobody has started this run.
+        var neverStarted = new ServerSupervisor(
+            started.Supervisor.ServerId, new EventBroker(), started.Settings, new HttpClient(),
+            NullLogger<ServerSupervisor>.Instance,
+            new RconSecretStore(
+                started.Settings,
+                DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(started.WorkingDirectory, "dpkeys"))),
+                NullLogger<RconSecretStore>.Instance));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveAsync(neverStarted, 12345));
+
+        Assert.Equal("No server has been started yet.", ex.Message);
+        Assert.Single(await service.ListInstalledAsync(started.Supervisor));
+    }
+
+    [Fact]
+    public async Task Remove_reports_a_clear_error_when_the_file_is_locked()
+    {
+        if (!OperatingSystem.IsWindows()) return; // POSIX unlink succeeds on an open file
+
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        const string fileBody = """
+            {"data":{"id":999,"modId":12345,"fileName":"plugin.jar","downloadUrl":"https://cdn.example/plugin.jar","fileLength":5,"gameVersions":[]}}
+            """;
+        var service = NewService(new StubHandler().Json(fileBody).Bytes("hello").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings);
+        await service.InstallAsync(started.Supervisor, 12345, 999, includeDependencies: false, CancellationToken.None);
+        var jarPath = Path.Combine(started.WorkingDirectory, "plugins", "plugin.jar");
+
+        await using (new FileStream(jarPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RemoveAsync(started.Supervisor, 12345));
+            Assert.Contains("plugin.jar", ex.Message);
+        }
+
+        Assert.Single(await service.ListInstalledAsync(started.Supervisor));
     }
 
     [Fact]

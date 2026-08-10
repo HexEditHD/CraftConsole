@@ -10,7 +10,8 @@ public record CurseForgeRequiredDependency(int ModId, string ModName);
 public record CurseForgeInstallResult(
     bool NeedsDependencyConfirmation,
     List<CurseForgeRequiredDependency> RequiredDependencies,
-    List<CurseForgeInstall> Installed);
+    List<CurseForgeInstall> Installed,
+    List<string> Warnings);
 
 /// <summary>
 /// CurseForge's counterpart to ModrinthService — same shape and the same
@@ -101,10 +102,14 @@ public sealed class CurseForgeService
             List<CurseForgeRequiredDependency> deps = [];
             foreach (var dep in required)
                 deps.Add(new CurseForgeRequiredDependency(dep.ModId, await _client.GetModNameAsync(apiKey, dep.ModId, ct)));
-            return new CurseForgeInstallResult(true, deps, []);
+            return new CurseForgeInstallResult(true, deps, [], []);
         }
 
-        List<CurseForgeInstall> installed = [await InstallOneAsync(sup, apiKey, file, ct)];
+        List<CurseForgeInstall> installed = [];
+        List<string> warnings = [];
+        var (primary, primaryWarning) = await InstallOneAsync(sup, apiKey, file, ct);
+        installed.Add(primary);
+        if (primaryWarning is not null) warnings.Add(primaryWarning);
 
         if (includeDependencies)
         {
@@ -114,14 +119,20 @@ public sealed class CurseForgeService
                 var depFiles = await _client.GetModFilesAsync(apiKey, dep.ModId, modLoaderType, profile.MinecraftVersion, ct);
                 // No compatible file found for this dependency — skip it rather
                 // than failing the whole install; the primary file already succeeded.
-                if (depFiles.Count > 0) installed.Add(await InstallOneAsync(sup, apiKey, depFiles[0], ct));
+                if (depFiles.Count > 0)
+                {
+                    var (depInstall, depWarning) = await InstallOneAsync(sup, apiKey, depFiles[0], ct);
+                    installed.Add(depInstall);
+                    if (depWarning is not null) warnings.Add(depWarning);
+                }
             }
         }
 
-        return new CurseForgeInstallResult(false, [], installed);
+        return new CurseForgeInstallResult(false, [], installed, warnings);
     }
 
-    private async Task<CurseForgeInstall> InstallOneAsync(ServerSupervisor sup, string apiKey, CurseForgeFile file, CancellationToken ct)
+    private async Task<(CurseForgeInstall Install, string? Warning)> InstallOneAsync(
+        ServerSupervisor sup, string apiKey, CurseForgeFile file, CancellationToken ct)
     {
         var profile = sup.ActiveProfile!;
         var dir = Path.Combine(profile.WorkingDirectory, TargetFolder(profile.Type));
@@ -139,7 +150,13 @@ public sealed class CurseForgeService
         // CurseForge-supplied, not user input, but it still flows into a
         // filesystem path — GetFileName strips any directory component defensively.
         var fileName = Path.GetFileName(file.FileName);
-        await _downloader.DownloadFileAsync(downloadUrl, Path.Combine(dir, fileName), null, ct);
+
+        // A re-install of this mod replaces the tracked entry (see TrackAsync
+        // below) — look up what it's replacing before writing, so the writer can
+        // clean up the old file when the new one has a different name.
+        var previousFileName = (await LoadAsync())
+            .FirstOrDefault(i => i.ServerId == sup.ServerId && i.ModId == file.ModId)?.FileName;
+        var warning = await InstalledJarWriter.WriteAsync(_downloader, downloadUrl, dir, fileName, previousFileName, ct);
 
         var install = new CurseForgeInstall
         {
@@ -151,7 +168,7 @@ public sealed class CurseForgeService
             InstalledAt = DateTimeOffset.UtcNow,
         };
         await TrackAsync(install);
-        return install;
+        return (install, warning);
     }
 
     public async Task<List<CurseForgeInstall>> ListInstalledAsync(ServerSupervisor sup)
@@ -162,8 +179,26 @@ public sealed class CurseForgeService
         var install = (await ListInstalledAsync(sup)).FirstOrDefault(i => i.ModId == modId);
         if (install is null) return false;
 
+        // A tracked install can outlive the process that made it — the store
+        // has no cleanup of its own — so this can be reached for a profile that
+        // has never been started this run, whose ActiveProfile is still null.
+        if (sup.LocalFileUnavailableReason is { } reason)
+            throw new InvalidOperationException(reason);
+
         var path = Path.Combine(sup.ActiveProfile!.WorkingDirectory, TargetFolder(sup.ActiveProfile.Type), install.FileName);
-        if (File.Exists(path)) File.Delete(path);
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Don't drop the tracking row on a failed delete — that would orphan
+            // the file on disk with nothing left pointing at it, and no way to
+            // retry from the UI.
+            throw new InvalidOperationException(
+                $"Could not remove \"{install.FileName}\" — if the server is running it may be " +
+                "holding it open. Stop it and try again.", ex);
+        }
 
         await _gate.WaitAsync();
         try

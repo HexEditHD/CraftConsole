@@ -323,6 +323,7 @@ function renderBrowseTab(container) {
     }
 
     toast(`Installed ${result.installed.map(installName).join(', ')}`);
+    for (const warning of result.warnings ?? []) toast(warning, 'err', 6000);
   }
 
   buildProviderSeg();
