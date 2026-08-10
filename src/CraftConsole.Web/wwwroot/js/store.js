@@ -67,8 +67,14 @@ async function hydrateCurrentServer() {
   capConsole();
 }
 
-/** The one place state.currentServerId is set from the server's own notion of "active". */
-async function hydrateServerList() {
+/**
+ * The one place state.currentServerId is set from the server's own notion of
+ * "active". Exported so any view that creates, edits, or deletes a profile
+ * can refresh servers[] — port/working-directory conflict flags only exist
+ * on this response, not on /api/profiles, so without a refresh here they'd
+ * stay stale until the next switchServer() or a page reload.
+ */
+export async function hydrateServerList() {
   try {
     const data = await api.get('/api/servers');
     state.servers = data.servers ?? [];
@@ -101,6 +107,10 @@ export async function initStore() {
     // status dots stay live for servers you aren't looking at.
     const idx = state.servers.findIndex(x => x.id === s.serverId);
     if (idx >= 0) {
+      // The spread carries portConflict/workingDirectoryConflict forward
+      // unchanged — this handler never recomputes them, only hydrateServerList()
+      // does. A future rewrite that builds this object from scratch instead of
+      // spreading would silently drop them.
       state.servers[idx] = { ...state.servers[idx], status: s.status, playerCount: s.playerCount };
       emit('store:servers');
     }

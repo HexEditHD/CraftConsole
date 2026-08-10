@@ -541,21 +541,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     // ── server.properties helpers ─────────────────────────────────────────
 
     private static int ReadMaxPlayers(string workingDirectory)
-    {
-        try
-        {
-            var path = Path.Combine(workingDirectory, "server.properties");
-            if (!File.Exists(path)) return 20;
-            foreach (var line in File.ReadLines(path))
-            {
-                if (line.StartsWith("max-players=", StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(line["max-players=".Length..].Trim(), out var max) && max > 0)
-                    return max;
-            }
-        }
-        catch { /* unreadable — keep default */ }
-        return 20;
-    }
+        => int.TryParse(ServerProperties.Read(workingDirectory, "max-players"), out var max) && max > 0 ? max : 20;
 
     // ── Disposal ──────────────────────────────────────────────────────────
 
