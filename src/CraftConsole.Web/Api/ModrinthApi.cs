@@ -48,6 +48,21 @@ public static class ModrinthApi
             return await VersionsAsync(modrinth, profile, projectId, ct);
         }).RequireRole(Role.Admin);
 
+        app.MapGet("/api/servers/{id:guid}/modrinth/updates", async (
+            Guid id, ProfilesService profiles, ModrinthService modrinth, CancellationToken ct) =>
+        {
+            if (await profiles.GetAsync(id) is not { } profile) return Results.NotFound();
+            return Results.Json(await modrinth.CheckUpdatesAsync(profile, ct), Json.Options);
+        }).RequireRole(Role.Admin);
+
+        app.MapGet("/api/modrinth/updates", async (
+            ProfilesService profiles, ModrinthService modrinth, CancellationToken ct) =>
+        {
+            if (await profiles.GetActiveAsync() is not { } profile)
+                return Results.BadRequest(new { Message = "No server profile exists yet." });
+            return Results.Json(await modrinth.CheckUpdatesAsync(profile, ct), Json.Options);
+        }).RequireRole(Role.Admin);
+
         app.MapPost("/api/servers/{id:guid}/modrinth/install", async (
             Guid id, InstallRequest req, ProfilesService profiles, ServerRegistry registry, ModrinthService modrinth, CancellationToken ct) =>
             await ServerScope.ResolveAsync(id, profiles, registry) is { } sup

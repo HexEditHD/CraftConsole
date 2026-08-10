@@ -560,4 +560,155 @@ public class ModrinthServiceTests
         var listed = Assert.Single(await reader.ListInstalledAsync(started.Supervisor));
         Assert.Equal("proj1", listed.ProjectId);
     }
+
+    // ── Check for updates ────────────────────────────────────────────────
+
+    private static string SimpleVersionBody(string id, string number, string projectId = "proj1") => $$"""
+        {"id":"{{id}}","project_id":"{{projectId}}","name":"n","version_number":"{{number}}",
+         "game_versions":[],"loaders":["paper"],"dependencies":[],
+         "files":[{"url":"https://cdn.example/plugin.jar","filename":"plugin.jar","primary":true,"size":5}]}
+        """;
+
+    // Tracked installs are keyed by the supervisor's own ServerId, which the
+    // StartedSupervisor test harness assigns independently of the profile's
+    // own Id (unlike ServerRegistry in production, which always constructs a
+    // supervisor with serverId == profile.Id). CheckUpdatesAsync filters by
+    // profile.Id, so tests need a profile whose Id actually matches what got
+    // tracked — this builds exactly that, without needing the server started.
+    private static ServerProfile ProfileFor(StartedSupervisor started, string minecraftVersion = "1.21.4")
+        => new() { Id = started.Supervisor.ServerId, Name = "x", Type = ServerType.Paper, MinecraftVersion = minecraftVersion };
+
+    [Fact]
+    public async Task CheckUpdates_flags_a_project_whose_newest_compatible_version_differs_from_installed()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var installer = NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0")).Bytes("bytes").Json("""{"title":"My Plugin"}"""),
+            started.Settings);
+        await installer.InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        const string versionsBody = """
+            [{"id":"v2","project_id":"proj1","name":"n","version_number":"2.0.0","version_type":"release",
+              "game_versions":[],"loaders":["paper"],"files":[]}]
+            """;
+        var checker = NewService(new StubHandler().Json(versionsBody), started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.Equal("proj1", status.ProjectId);
+        Assert.Equal("v1", status.InstalledVersionId);
+        Assert.Equal("v2", status.LatestVersionId);
+        Assert.Equal("2.0.0", status.LatestVersionNumber);
+        Assert.True(status.UpdateAvailable);
+        Assert.Null(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_reports_up_to_date_when_the_newest_version_is_the_installed_one()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var installer = NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0")).Bytes("bytes").Json("""{"title":"My Plugin"}"""),
+            started.Settings);
+        await installer.InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(new StubHandler().Json($"[{SimpleVersionBody("v1", "1.0.0")}]"), started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.False(status.UpdateAvailable);
+        Assert.Null(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_marks_a_project_with_no_compatible_version_left_as_unavailable()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var installer = NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0")).Bytes("bytes").Json("""{"title":"My Plugin"}"""),
+            started.Settings);
+        await installer.InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(new StubHandler().Json("[]"), started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.False(status.UpdateAvailable);
+        Assert.NotNull(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_survives_one_project_failing_and_still_checks_the_rest()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        await NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0", "proj1")).Bytes("bytes1").Json("""{"title":"Plugin One"}"""),
+            started.Settings).InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+        await NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0", "proj2")).Bytes("bytes2").Json("""{"title":"Plugin Two"}"""),
+            started.Settings).InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(
+            new StubHandler().Status(HttpStatusCode.NotFound).Json($"[{SimpleVersionBody("v2", "2.0.0", "proj2")}]"),
+            started.Settings);
+
+        var results = await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        var proj1 = results.Single(r => r.ProjectId == "proj1");
+        Assert.NotNull(proj1.Unavailable);
+        var proj2 = results.Single(r => r.ProjectId == "proj2");
+        Assert.Null(proj2.Unavailable);
+        Assert.True(proj2.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_returns_nothing_for_a_profile_with_no_tracked_installs_without_making_a_request()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var handler = new StubHandler(); // no responses queued — a call would throw
+        var checker = NewService(handler, started.Settings);
+
+        var results = await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        Assert.Empty(results);
+        Assert.Empty(handler.RequestUris);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_filters_by_the_profiles_loader_and_minecraft_version()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var installer = NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0")).Bytes("bytes").Json("""{"title":"My Plugin"}"""),
+            started.Settings);
+        await installer.InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        var handler = new StubHandler().Json($"[{SimpleVersionBody("v1", "1.0.0")}]");
+        var checker = NewService(handler, started.Settings);
+
+        await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        var uri = handler.RequestUris[0];
+        Assert.Equal("""["paper","spigot","bukkit"]""", QueryParam(uri, "loaders"));
+        Assert.Equal("""["1.21.4"]""", QueryParam(uri, "game_versions"));
+    }
+
+    [Fact]
+    public async Task CheckUpdates_works_for_a_profile_this_process_never_started()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper, "1.21.4");
+        var installer = NewService(
+            new StubHandler().Json(SimpleVersionBody("v1", "1.0.0")).Bytes("bytes").Json("""{"title":"My Plugin"}"""),
+            started.Settings);
+        await installer.InstallAsync(started.Supervisor, "v1", includeDependencies: false, CancellationToken.None);
+
+        // ProfileFor builds a bare profile sharing only the id — no
+        // ServerSupervisor.StartAsync runs against it in this test.
+        var checker = NewService(new StubHandler().Json($"[{SimpleVersionBody("v2", "2.0.0")}]"), started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.True(status.UpdateAvailable);
+    }
 }

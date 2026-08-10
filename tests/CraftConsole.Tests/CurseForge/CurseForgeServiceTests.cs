@@ -567,4 +567,177 @@ public class CurseForgeServiceTests
         var listed = Assert.Single(await reader.ListInstalledAsync(started.Supervisor));
         Assert.Equal(12345, listed.ModId);
     }
+
+    // ── Check for updates ────────────────────────────────────────────────
+
+    // GetFileAsync's single-file shape ({"data": {...}}), for install calls.
+    private static string SimpleFileBody(int fileId, string displayName = "", int modId = 100) => $$$"""
+        {"data":{"id":{{{fileId}}},"modId":{{{modId}}},"fileName":"plugin.jar","displayName":"{{{displayName}}}",
+         "downloadUrl":"https://cdn.example/plugin.jar","fileLength":5,"gameVersions":[],"releaseType":1}}
+        """;
+
+    // GetModFilesAsync's list shape ({"data": [...]})  — each array element is
+    // a bare file object, unlike SimpleFileBody's single-file wrapper above.
+    private static string FileListBody(int fileId, string displayName = "", int modId = 100) => $$$"""
+        {"data":[{"id":{{{fileId}}},"modId":{{{modId}}},"fileName":"plugin.jar","displayName":"{{{displayName}}}",
+         "downloadUrl":"https://cdn.example/plugin.jar","fileLength":5,"gameVersions":[],"releaseType":1}]}
+        """;
+
+    // See ModrinthServiceTests.ProfileFor's own comment — same reasoning.
+    private static ServerProfile ProfileFor(StartedSupervisor started, string minecraftVersion = "1.21.4")
+        => new() { Id = started.Supervisor.ServerId, Name = "x", Type = ServerType.Paper, MinecraftVersion = minecraftVersion };
+
+    [Fact]
+    public async Task CheckUpdates_flags_a_mod_whose_newest_compatible_file_differs_from_installed()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        const string filesBody = """
+            {"data":[{"id":2,"modId":100,"fileName":"plugin2.jar","displayName":"Plugin v2","fileLength":5,"gameVersions":[],"releaseType":1}]}
+            """;
+        var checker = NewService(new StubHandler().Json(filesBody), started.ApiKey, started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.Equal(100, status.ModId);
+        Assert.Equal(1, status.InstalledFileId);
+        Assert.Equal(2, status.LatestFileId);
+        Assert.Equal("Plugin v2", status.LatestDisplayName);
+        Assert.True(status.UpdateAvailable);
+        Assert.Null(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_reports_up_to_date_when_the_newest_file_is_the_installed_one()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(new StubHandler().Json(FileListBody(1)), started.ApiKey, started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.False(status.UpdateAvailable);
+        Assert.Null(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_marks_a_mod_with_no_compatible_file_left_as_unavailable()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(new StubHandler().Json("""{"data":[]}"""), started.ApiKey, started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.False(status.UpdateAvailable);
+        Assert.NotNull(status.Unavailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_survives_one_mod_failing_and_still_checks_the_rest()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1, modId: 100)).Bytes("bytes1").Json("""{"data":{"name":"Plugin One"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+        await NewService(new StubHandler().Json(SimpleFileBody(1, modId: 200)).Bytes("bytes2").Json("""{"data":{"name":"Plugin Two"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 200, 1, includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(
+            new StubHandler().Status(HttpStatusCode.NotFound).Json(FileListBody(2, "Plugin Two v2", 200)),
+            started.ApiKey, started.Settings);
+
+        var results = await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        Assert.Equal(2, results.Count);
+        var mod100 = results.Single(r => r.ModId == 100);
+        Assert.NotNull(mod100.Unavailable);
+        var mod200 = results.Single(r => r.ModId == 200);
+        Assert.Null(mod200.Unavailable);
+        Assert.True(mod200.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_returns_nothing_for_a_profile_with_no_tracked_installs_without_making_a_request()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        var handler = new StubHandler(); // no responses queued — a call would throw
+        var checker = NewService(handler, started.ApiKey, started.Settings);
+
+        var results = await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        Assert.Empty(results);
+        Assert.Empty(handler.RequestUris);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_filters_by_the_profiles_loader_and_minecraft_version()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Fabric);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Mod"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        var handler = new StubHandler().Json(FileListBody(1));
+        var checker = NewService(handler, started.ApiKey, started.Settings);
+
+        await checker.CheckUpdatesAsync(new ServerProfile { Id = started.Supervisor.ServerId, Name = "x", Type = ServerType.Fabric, MinecraftVersion = "1.21.4" }, CancellationToken.None);
+
+        var uri = handler.RequestUris[0];
+        Assert.Equal("4", QueryParam(uri, "modLoaderType"));
+        Assert.Equal("1.21.4", QueryParam(uri, "gameVersion"));
+    }
+
+    [Fact]
+    public async Task CheckUpdates_works_for_a_profile_this_process_never_started()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        var checker = NewService(new StubHandler().Json(FileListBody(2, "v2")), started.ApiKey, started.Settings);
+
+        var status = Assert.Single(await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.True(status.UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_throws_when_no_api_key_is_configured_and_something_is_tracked()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        await NewService(new StubHandler().Json(SimpleFileBody(1)).Bytes("bytes").Json("""{"data":{"name":"My Plugin"}}"""), started.ApiKey, started.Settings)
+            .InstallAsync(started.Supervisor, 100, 1, includeDependencies: false, CancellationToken.None);
+
+        // started.ApiKey already persisted "test-key" to disk during install —
+        // a fresh store instance would still read that same file, so the key
+        // must be explicitly removed to actually simulate "none configured".
+        await started.ApiKey.RemoveAsync();
+        var handler = new StubHandler(); // no responses queued — the key check must reject first
+        var checker = NewService(handler, started.ApiKey, started.Settings);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None));
+
+        Assert.Contains("API key", ex.Message);
+        Assert.Empty(handler.RequestUris);
+    }
+
+    [Fact]
+    public async Task CheckUpdates_returns_nothing_without_demanding_an_api_key_when_nothing_is_tracked()
+    {
+        await using var started = await StartedSupervisor.CreateAsync(ServerType.Paper);
+        var noKey = await NewApiKeyStoreAsync(started.Settings, apiKey: null);
+        var handler = new StubHandler();
+        var checker = NewService(handler, noKey, started.Settings);
+
+        var results = await checker.CheckUpdatesAsync(ProfileFor(started), CancellationToken.None);
+
+        Assert.Empty(results);
+        Assert.Empty(handler.RequestUris);
+    }
 }
