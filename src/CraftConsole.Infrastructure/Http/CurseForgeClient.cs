@@ -16,8 +16,15 @@ public record CurseForgeSearchResult(List<CurseForgeSearchHit> Hits, int TotalHi
 /// </summary>
 public record CurseForgeDependency(int ModId, string RelationType);
 
+/// <summary>
+/// DisplayName falls back to FileName when CurseForge omits it, so a caller
+/// always has something to show — never blank. ReleaseType is normalized to
+/// Modrinth's channel vocabulary ("release"/"beta"/"alpha") the same way
+/// RelationType is, via ReleaseTypeName below.
+/// </summary>
 public record CurseForgeFile(
-    int Id, int ModId, string FileName, string? DownloadUrl, long FileLength,
+    int Id, int ModId, string FileName, string DisplayName, string? DownloadUrl, long FileLength,
+    string ReleaseType, DateTimeOffset? FileDate,
     List<string> GameVersions, List<CurseForgeDependency> Dependencies);
 
 /// <summary>
@@ -139,12 +146,19 @@ public class CurseForgeClient
                 .ToList()
             : [];
 
+        var fileName = f.GetProperty("fileName").GetString() ?? "";
+        var displayName = f.TryGetProperty("displayName", out var dn) && dn.ValueKind == JsonValueKind.String
+            ? dn.GetString()! : "";
+
         return new CurseForgeFile(
             f.GetProperty("id").GetInt32(),
             f.GetProperty("modId").GetInt32(),
-            f.GetProperty("fileName").GetString() ?? "",
+            fileName,
+            string.IsNullOrEmpty(displayName) ? fileName : displayName,
             f.TryGetProperty("downloadUrl", out var url) && url.ValueKind == JsonValueKind.String ? url.GetString() : null,
             f.TryGetProperty("fileLength", out var len) ? len.GetInt64() : 0,
+            f.TryGetProperty("releaseType", out var rt) && rt.ValueKind == JsonValueKind.Number ? ReleaseTypeName(rt.GetInt32()) : "",
+            f.TryGetProperty("fileDate", out var fd) && fd.TryGetDateTimeOffset(out var fileDate) ? fileDate : null,
             f.TryGetProperty("gameVersions", out var gv) && gv.ValueKind == JsonValueKind.Array
                 ? [.. gv.EnumerateArray().Select(g => g.GetString()!)]
                 : [],
@@ -160,5 +174,14 @@ public class CurseForgeClient
         5 => "incompatible",
         1 or 6 => "embedded",
         _ => "optional",
+    };
+
+    // CurseForge's releaseType: 1 Release, 2 Beta, 3 Alpha.
+    private static string ReleaseTypeName(int releaseType) => releaseType switch
+    {
+        1 => "release",
+        2 => "beta",
+        3 => "alpha",
+        _ => "",
     };
 }
