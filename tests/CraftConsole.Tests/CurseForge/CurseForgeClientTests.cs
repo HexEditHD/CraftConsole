@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using CraftConsole.Infrastructure.Http;
 using Xunit;
@@ -24,6 +25,17 @@ public class CurseForgeClientTests
         public StubHandler Status(HttpStatusCode code)
         {
             _responses.Enqueue(() => new HttpResponseMessage(code));
+            return this;
+        }
+
+        public StubHandler RateLimited(TimeSpan? retryAfter = null)
+        {
+            _responses.Enqueue(() =>
+            {
+                var res = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+                if (retryAfter is { } ra) res.Headers.RetryAfter = new(ra);
+                return res;
+            });
             return this;
         }
 
@@ -140,6 +152,59 @@ public class CurseForgeClientTests
         Assert.Contains("API key", ex.Message);
     }
 
+    [Fact]
+    public async Task Search_falls_back_to_an_empty_author_when_the_author_object_has_no_name()
+    {
+        const string body = """
+            {"data":[{"id":1,"name":"Plugin","authors":[{"id":2}]}],"pagination":{"totalCount":1}}
+            """;
+        var handler = new StubHandler().Json(body);
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        var result = await client.SearchAsync("key", "q", 6, null, null, 0, 20);
+
+        Assert.Equal("", Assert.Single(result.Hits).Author);
+    }
+
+    [Fact]
+    public async Task Search_falls_back_to_zero_downloads_when_downloadCount_is_not_a_number()
+    {
+        const string body = """
+            {"data":[{"id":1,"name":"Plugin","authors":[],"downloadCount":"a lot"}],"pagination":{"totalCount":1}}
+            """;
+        var handler = new StubHandler().Json(body);
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        var result = await client.SearchAsync("key", "q", 6, null, null, 0, 20);
+
+        Assert.Equal(0, Assert.Single(result.Hits).Downloads);
+    }
+
+    [Fact]
+    public async Task Search_throws_a_clear_error_when_rate_limited()
+    {
+        var client = NewClient(out var handler);
+        handler.RateLimited(TimeSpan.FromSeconds(30));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.SearchAsync("key", "q", 6, null, null, 0, 20));
+
+        Assert.Contains("rate-limiting", ex.Message);
+        Assert.Contains("30 seconds", ex.Message);
+    }
+
+    [Fact]
+    public async Task Search_throws_a_clear_error_when_rate_limited_without_a_retry_after_header()
+    {
+        var client = NewClient(out var handler);
+        handler.RateLimited();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.SearchAsync("key", "q", 6, null, null, 0, 20));
+
+        Assert.Contains("rate-limiting", ex.Message);
+    }
+
     // ── Mod files ────────────────────────────────────────────────────────
 
     [Fact]
@@ -238,7 +303,38 @@ public class CurseForgeClientTests
         await client.GetModFilesAsync("key", 5, modLoaderType: null, gameVersion: null);
 
         Assert.Equal("1", QueryParam(handler.Requests[0].RequestUri!, "modLoaderType"));
-        Assert.Equal("", handler.Requests[1].RequestUri!.Query);
+        // pageSize is always sent — only modLoaderType/gameVersion are conditional.
+        Assert.DoesNotContain("modLoaderType", handler.Requests[1].RequestUri!.Query);
+        Assert.DoesNotContain("gameVersion", handler.Requests[1].RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task GetModFiles_always_requests_the_maximum_page_size()
+    {
+        var handler = new StubHandler().Json("""{"data":[]}""");
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        await client.GetModFilesAsync("key", 5, null, null);
+
+        Assert.Equal("50", QueryParam(handler.Requests[0].RequestUri!, "pageSize"));
+    }
+
+    [Fact]
+    public async Task GetModFiles_sorts_by_file_date_descending_rather_than_trusting_the_apis_own_order()
+    {
+        const string body = """
+            {"data":[
+              {"id":1,"modId":5,"fileName":"old.jar","fileLength":1,"gameVersions":[],"fileDate":"2024-01-01T00:00:00Z"},
+              {"id":2,"modId":5,"fileName":"new.jar","fileLength":1,"gameVersions":[],"fileDate":"2024-06-01T00:00:00Z"},
+              {"id":3,"modId":5,"fileName":"mid.jar","fileLength":1,"gameVersions":[],"fileDate":"2024-03-01T00:00:00Z"}
+            ]}
+            """;
+        var handler = new StubHandler().Json(body);
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        var files = await client.GetModFilesAsync("key", 5, null, null);
+
+        Assert.Equal(["new.jar", "mid.jar", "old.jar"], files.Select(f => f.FileName));
     }
 
     [Fact]
@@ -291,5 +387,51 @@ public class CurseForgeClientTests
         var url = await client.ResolveDownloadUrlAsync("key", 12345, 999);
 
         Assert.Null(url);
+    }
+
+    [Fact]
+    public async Task ResolveDownloadUrl_returns_null_instead_of_throwing_on_a_forbidden_response()
+    {
+        var client = NewClient(out var handler);
+        handler.Status(HttpStatusCode.Forbidden);
+
+        var url = await client.ResolveDownloadUrlAsync("key", 12345, 999);
+
+        Assert.Null(url);
+    }
+
+    [Fact]
+    public async Task ResolveDownloadUrl_returns_null_instead_of_throwing_when_the_file_is_gone()
+    {
+        var client = NewClient(out var handler);
+        handler.Status(HttpStatusCode.NotFound);
+
+        var url = await client.ResolveDownloadUrlAsync("key", 12345, 999);
+
+        Assert.Null(url);
+    }
+
+    [Fact]
+    public async Task ResolveDownloadUrl_still_throws_a_clear_error_for_a_rejected_api_key()
+    {
+        var client = NewClient(out var handler);
+        handler.Status(HttpStatusCode.Unauthorized);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.ResolveDownloadUrlAsync("bad-key", 12345, 999));
+
+        Assert.Contains("API key", ex.Message);
+    }
+
+    [Fact]
+    public async Task ResolveDownloadUrl_throws_a_clear_error_when_rate_limited()
+    {
+        var client = NewClient(out var handler);
+        handler.RateLimited(TimeSpan.FromSeconds(5));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.ResolveDownloadUrlAsync("key", 12345, 999));
+
+        Assert.Contains("rate-limiting", ex.Message);
     }
 }

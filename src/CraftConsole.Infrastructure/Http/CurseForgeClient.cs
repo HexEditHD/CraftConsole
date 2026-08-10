@@ -49,15 +49,35 @@ public class CurseForgeClient
         _http = http;
     }
 
-    private async Task<JsonDocument> GetJsonAsync(string url, string apiKey, CancellationToken ct)
+    private async Task<HttpResponseMessage> SendRequestAsync(string url, string apiKey, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.UserAgent.ParseAdd(UserAgent);
         req.Headers.Add("x-api-key", apiKey);
+        return await _http.SendAsync(req, ct);
+    }
 
-        using var r = await _http.SendAsync(req, ct);
+    /// <summary>
+    /// Rate limiting is entirely unhandled otherwise — a 429 would fall through
+    /// to EnsureSuccessStatusCode as an opaque HttpRequestException. Worth
+    /// having now that CheckUpdatesAsync can fan out one request per tracked
+    /// mod for a whole modpack.
+    /// </summary>
+    private static void ThrowIfRateLimited(HttpResponseMessage r)
+    {
+        if (r.StatusCode != HttpStatusCode.TooManyRequests) return;
+        var retryAfter = r.Headers.RetryAfter?.Delta?.TotalSeconds
+            ?? (r.Headers.RetryAfter?.Date is { } date ? (date - DateTimeOffset.UtcNow).TotalSeconds : (double?)null);
+        var hint = retryAfter is > 0 ? $" Try again in {Math.Ceiling(retryAfter.Value)} seconds." : " Try again shortly.";
+        throw new InvalidOperationException($"CurseForge is rate-limiting requests.{hint}");
+    }
+
+    private async Task<JsonDocument> GetJsonAsync(string url, string apiKey, CancellationToken ct)
+    {
+        using var r = await SendRequestAsync(url, apiKey, ct);
         if (r.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             throw new InvalidOperationException("CurseForge rejected the configured API key.");
+        ThrowIfRateLimited(r);
         r.EnsureSuccessStatusCode();
 
         return await JsonDocument.ParseAsync(await r.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
@@ -81,11 +101,13 @@ public class CurseForgeClient
             m.GetProperty("name").GetString() ?? "",
             m.TryGetProperty("summary", out var summary) ? summary.GetString() ?? "" : "",
             m.TryGetProperty("authors", out var authors) && authors.ValueKind == JsonValueKind.Array && authors.GetArrayLength() > 0
-                ? authors[0].GetProperty("name").GetString() ?? "" : "",
+                && authors[0].TryGetProperty("name", out var authorName) && authorName.ValueKind == JsonValueKind.String
+                ? authorName.GetString()! : "",
             m.TryGetProperty("logo", out var logo) && logo.ValueKind == JsonValueKind.Object
                 && logo.TryGetProperty("thumbnailUrl", out var thumb) && thumb.ValueKind == JsonValueKind.String
                 ? thumb.GetString() : null,
-            m.TryGetProperty("downloadCount", out var dl) ? (long)dl.GetDouble() : 0))
+            m.TryGetProperty("downloadCount", out var dl) && dl.ValueKind == JsonValueKind.Number && dl.TryGetDouble(out var downloads)
+                ? (long)downloads : 0))
             .ToList();
 
         var total = root.TryGetProperty("pagination", out var pagination) && pagination.TryGetProperty("totalCount", out var tc)
@@ -95,19 +117,23 @@ public class CurseForgeClient
         return new CurseForgeSearchResult(hits, total);
     }
 
-    /// <summary>Files for one mod, newest first (CurseForge's own default order), loader/game-version filtered.</summary>
+    /// <summary>
+    /// Files for one mod, loader/game-version filtered. Requests CurseForge's
+    /// documented max page size explicitly rather than relying on whatever the
+    /// API's own default happens to be, and sorts the parsed result by
+    /// fileDate descending rather than trusting CurseForge's own ordering —
+    /// InstallAsync's dependency path and CheckUpdatesAsync both treat index 0
+    /// as "newest compatible", so that has to be guaranteed here, not assumed.
+    /// </summary>
     public async Task<List<CurseForgeFile>> GetModFilesAsync(
         string apiKey, int modId, int? modLoaderType, string? gameVersion, CancellationToken ct = default)
     {
-        List<string> qs = [];
+        List<string> qs = ["pageSize=50"];
         if (modLoaderType is { } mlt) qs.Add($"modLoaderType={mlt}");
         if (!string.IsNullOrEmpty(gameVersion)) qs.Add($"gameVersion={Uri.EscapeDataString(gameVersion)}");
 
-        var url = $"{BaseUrl}/mods/{modId}/files";
-        if (qs.Count > 0) url += "?" + string.Join("&", qs);
-
-        using var d = await GetJsonAsync(url, apiKey, ct);
-        return [.. d.RootElement.GetProperty("data").EnumerateArray().Select(ParseFile)];
+        using var d = await GetJsonAsync($"{BaseUrl}/mods/{modId}/files?{string.Join("&", qs)}", apiKey, ct);
+        return [.. d.RootElement.GetProperty("data").EnumerateArray().Select(ParseFile).OrderByDescending(f => f.FileDate)];
     }
 
     public async Task<CurseForgeFile> GetFileAsync(string apiKey, int modId, int fileId, CancellationToken ct = default)
@@ -131,7 +157,22 @@ public class CurseForgeClient
     /// </summary>
     public async Task<string?> ResolveDownloadUrlAsync(string apiKey, int modId, int fileId, CancellationToken ct = default)
     {
-        using var d = await GetJsonAsync($"{BaseUrl}/mods/{modId}/files/{fileId}/download-url", apiKey, ct);
+        using var r = await SendRequestAsync($"{BaseUrl}/mods/{modId}/files/{fileId}/download-url", apiKey, ct);
+
+        // A 403 here almost always means the file's own third-party-download
+        // flag, not a bad key — by the time this runs, an earlier call in the
+        // same install (GetFileAsync) has already succeeded with this key, so
+        // a key rejection would have surfaced there first. A 404 means the
+        // file is gone. Both are "nothing to resolve" — InstallOneAsync's own
+        // friendly message covers a null return, which reads better than the
+        // generic API-key-rejected error for either case.
+        if (r.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound) return null;
+        if (r.StatusCode == HttpStatusCode.Unauthorized)
+            throw new InvalidOperationException("CurseForge rejected the configured API key.");
+        ThrowIfRateLimited(r);
+        r.EnsureSuccessStatusCode();
+
+        using var d = await JsonDocument.ParseAsync(await r.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         return d.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.String
             ? data.GetString()
             : null;
