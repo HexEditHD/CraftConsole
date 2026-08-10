@@ -22,6 +22,19 @@ public record ModrinthInstallResult(
     List<string> Warnings);
 
 /// <summary>
+/// Unavailable is set instead of throwing when one project's own check fails
+/// (deleted, renamed, no compatible version left) — one bad row must not
+/// blank the whole list. UpdateAvailable compares against the newest
+/// *compatible* version, not a semver comparison, since CheckUpdatesAsync
+/// already filters by loader and Minecraft version the same way
+/// GetVersionsAsync does.
+/// </summary>
+public record ModrinthUpdateStatus(
+    string ProjectId, string InstalledVersionId, string InstalledVersionNumber,
+    string? LatestVersionId, string? LatestVersionNumber, string? LatestVersionType, DateTimeOffset? LatestDatePublished,
+    bool UpdateAvailable, string? Unavailable);
+
+/// <summary>
 /// Search and install orchestration for the Plugins screen's Browse tab.
 /// Search and version listing work off the profile alone — they're pure
 /// network calls — so they're available for a profile that has never been
@@ -174,6 +187,56 @@ public sealed class ModrinthService
 
     public async Task<List<ModrinthInstall>> ListInstalledAsync(ServerSupervisor sup)
         => [.. (await LoadAsync()).Where(i => i.ServerId == sup.ServerId)];
+
+    /// <summary>
+    /// Takes the profile, not a supervisor — CheckUpdatesAsync must work for a
+    /// profile whose server has never been started this run, and a supervisor
+    /// signature would deref sup.ActiveProfile! for LoaderInfo (the same NRE
+    /// InstallAsync/RemoveAsync used to have). ServerSupervisor.ServerId is the
+    /// profile id, so filtering by profile.Id is exactly what ListInstalledAsync
+    /// does with a supervisor.
+    /// </summary>
+    public async Task<List<ModrinthUpdateStatus>> CheckUpdatesAsync(ServerProfile profile, CancellationToken ct)
+    {
+        var installs = (await LoadAsync()).Where(i => i.ServerId == profile.Id).ToList();
+        if (installs.Count == 0) return [];
+
+        var (_, loaders) = LoaderInfo(profile.Type);
+        List<ModrinthUpdateStatus> result = [];
+        // Sequential, not Task.WhenAll — no reason to fan a modpack-sized
+        // check out in parallel and risk tripping a rate limit.
+        foreach (var install in installs)
+        {
+            try
+            {
+                var versions = await _client.GetProjectVersionsAsync(install.ProjectId, loaders, profile.MinecraftVersion, ct);
+                if (versions.Count == 0)
+                {
+                    result.Add(new ModrinthUpdateStatus(
+                        install.ProjectId, install.VersionId, install.VersionNumber,
+                        null, null, null, null,
+                        false, "No version compatible with this server is published any more."));
+                    continue;
+                }
+
+                var latest = versions[0];
+                result.Add(new ModrinthUpdateStatus(
+                    install.ProjectId, install.VersionId, install.VersionNumber,
+                    latest.Id, latest.VersionNumber, latest.VersionType, latest.DatePublished,
+                    latest.Id != install.VersionId, null));
+            }
+            catch (HttpRequestException ex)
+            {
+                // One project failing to check (deleted, renamed) must not
+                // blank the rest of the list.
+                result.Add(new ModrinthUpdateStatus(
+                    install.ProjectId, install.VersionId, install.VersionNumber,
+                    null, null, null, null,
+                    false, $"Could not check: {ex.Message}"));
+            }
+        }
+        return result;
+    }
 
     public async Task<bool> RemoveAsync(ServerSupervisor sup, string projectId)
     {

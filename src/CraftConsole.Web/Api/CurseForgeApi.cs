@@ -48,6 +48,21 @@ public static class CurseForgeApi
             return await FilesAsync(curseforge, profile, modId, ct);
         }).RequireRole(Role.Admin);
 
+        app.MapGet("/api/servers/{id:guid}/curseforge/updates", async (
+            Guid id, ProfilesService profiles, CurseForgeService curseforge, CancellationToken ct) =>
+        {
+            if (await profiles.GetAsync(id) is not { } profile) return Results.NotFound();
+            return await UpdatesAsync(curseforge, profile, ct);
+        }).RequireRole(Role.Admin);
+
+        app.MapGet("/api/curseforge/updates", async (
+            ProfilesService profiles, CurseForgeService curseforge, CancellationToken ct) =>
+        {
+            if (await profiles.GetActiveAsync() is not { } profile)
+                return Results.BadRequest(new { Message = "No server profile exists yet." });
+            return await UpdatesAsync(curseforge, profile, ct);
+        }).RequireRole(Role.Admin);
+
         app.MapPost("/api/servers/{id:guid}/curseforge/install", async (
             Guid id, InstallRequest req, ProfilesService profiles, ServerRegistry registry, CurseForgeService curseforge, CancellationToken ct) =>
             await ServerScope.ResolveAsync(id, profiles, registry) is { } sup
@@ -138,6 +153,15 @@ public static class CurseForgeApi
         {
             return Results.Json(new { Message = $"Could not reach CurseForge: {ex.Message}" }, Json.Options, statusCode: StatusCodes.Status502BadGateway);
         }
+    }
+
+    private static async Task<IResult> UpdatesAsync(CurseForgeService curseforge, ServerProfile profile, CancellationToken ct)
+    {
+        try
+        {
+            return Results.Json(await curseforge.CheckUpdatesAsync(profile, ct), Json.Options);
+        }
+        catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
     }
 
     private static async Task<IResult> InstallAsync(ServerSupervisor sup, InstallRequest req, CurseForgeService curseforge, CancellationToken ct)

@@ -14,6 +14,18 @@ public record CurseForgeInstallResult(
     List<string> Warnings);
 
 /// <summary>
+/// Unavailable is set instead of throwing when one mod's own check fails (its
+/// files 404, its class id no longer applies, …) — one bad row must not blank
+/// the whole list. UpdateAvailable compares against the newest *compatible*
+/// file, not a semver comparison, since CheckUpdatesAsync already filters by
+/// loader and Minecraft version the same way GetFilesAsync does.
+/// </summary>
+public record CurseForgeUpdateStatus(
+    int ModId, int InstalledFileId, string InstalledFileName,
+    int? LatestFileId, string? LatestDisplayName, string? LatestReleaseType, DateTimeOffset? LatestFileDate,
+    bool UpdateAvailable, string? Unavailable);
+
+/// <summary>
 /// CurseForge's counterpart to ModrinthService — same shape and the same
 /// reasoning throughout (search/file-listing work off the profile alone and
 /// don't require a started server; install/list/remove need a resolved
@@ -165,6 +177,7 @@ public sealed class CurseForgeService
             ModName = await _client.GetModNameAsync(apiKey, file.ModId, ct),
             FileId = file.Id,
             FileName = fileName,
+            DisplayName = file.DisplayName,
             InstalledAt = DateTimeOffset.UtcNow,
         };
         await TrackAsync(install);
@@ -173,6 +186,59 @@ public sealed class CurseForgeService
 
     public async Task<List<CurseForgeInstall>> ListInstalledAsync(ServerSupervisor sup)
         => [.. (await LoadAsync()).Where(i => i.ServerId == sup.ServerId)];
+
+    /// <summary>
+    /// Takes the profile, not a supervisor — CheckUpdatesAsync must work for a
+    /// profile whose server has never been started this run, and a supervisor
+    /// signature would deref sup.ActiveProfile! for LoaderInfo (the same NRE
+    /// InstallAsync/RemoveAsync used to have). ServerSupervisor.ServerId is the
+    /// profile id, so filtering by profile.Id is exactly what ListInstalledAsync
+    /// does with a supervisor.
+    /// </summary>
+    public async Task<List<CurseForgeUpdateStatus>> CheckUpdatesAsync(ServerProfile profile, CancellationToken ct)
+    {
+        var installs = (await LoadAsync()).Where(i => i.ServerId == profile.Id).ToList();
+        if (installs.Count == 0) return []; // no API key needed if nothing to check
+
+        var apiKey = await RequireApiKeyAsync();
+        var (_, modLoaderType) = LoaderInfo(profile.Type);
+
+        List<CurseForgeUpdateStatus> result = [];
+        // Sequential, not Task.WhenAll — CurseForge's per-key rate limits are
+        // strict, and fanning out a large modpack in parallel is exactly the
+        // shape that gets a key throttled.
+        foreach (var install in installs)
+        {
+            try
+            {
+                var files = await _client.GetModFilesAsync(apiKey, install.ModId, modLoaderType, profile.MinecraftVersion, ct);
+                if (files.Count == 0)
+                {
+                    result.Add(new CurseForgeUpdateStatus(
+                        install.ModId, install.FileId, install.FileName,
+                        null, null, null, null,
+                        false, "No file compatible with this server is published any more."));
+                    continue;
+                }
+
+                var latest = files[0];
+                result.Add(new CurseForgeUpdateStatus(
+                    install.ModId, install.FileId, install.FileName,
+                    latest.Id, latest.DisplayName, latest.ReleaseType, latest.FileDate,
+                    latest.Id != install.FileId, null));
+            }
+            catch (HttpRequestException ex)
+            {
+                // One mod failing to check (deleted, renamed) must not blank
+                // the rest of the list.
+                result.Add(new CurseForgeUpdateStatus(
+                    install.ModId, install.FileId, install.FileName,
+                    null, null, null, null,
+                    false, $"Could not check: {ex.Message}"));
+            }
+        }
+        return result;
+    }
 
     public async Task<bool> RemoveAsync(ServerSupervisor sup, int modId)
     {

@@ -71,6 +71,10 @@ const PROVIDERS = {
       }));
     },
     install: (target, includeDependencies) => api.post('/api/modrinth/install', { versionId: target.versionId, includeDependencies }),
+    updates: () => api.get('/api/modrinth/updates'),
+    updateTarget: (installed, update) => ({ versionId: update.latestVersionId }),
+    updateLabel: update => update.latestVersionNumber,
+    currentLabel: installed => installed.versionNumber,
   },
   curseforge: {
     label: 'CurseForge',
@@ -87,6 +91,10 @@ const PROVIDERS = {
       }));
     },
     install: (target, includeDependencies) => api.post('/api/curseforge/install', { modId: target.modId, fileId: target.fileId, includeDependencies }),
+    updates: () => api.get('/api/curseforge/updates'),
+    updateTarget: (installed, update) => ({ modId: installed.modId, fileId: update.latestFileId }),
+    updateLabel: update => update.latestDisplayName,
+    currentLabel: installed => installed.displayName || installed.fileName,
   },
 };
 
@@ -172,11 +180,52 @@ async function installTarget(provider, target, title, includeDependencies = fals
 
 // ── Installed ────────────────────────────────────────────────────────────
 function renderInstalledTab(container) {
+  // Keyed by projectId / modId — populated by checkUpdates(), read by
+  // trackedTable() when it (re)renders. Absent means "never checked", not
+  // "up to date", so a fresh install shows no status until Check for
+  // updates has actually run.
+  const modrinthUpdates = new Map();
+  const curseForgeUpdates = new Map();
+
   const modrinthList = h('div');
   const curseForgeList = h('div');
+
+  const checkBtnLabel = h('span', {}, 'Check for updates');
+  const checkBtn = h('button', { class: 'btn sm', onclick: checkUpdates }, icon('refresh'), checkBtnLabel);
+
   container.append(
+    h('div', { class: 'view-head' },
+      h('span', { class: 'sub' }, 'Mods and plugins CraftConsole installed for this server.'),
+      h('span', { class: 'spacer' }),
+      checkBtn),
     h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Installed via Modrinth'), modrinthList),
     h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Installed via CurseForge'), curseForgeList));
+
+  async function checkUpdates() {
+    checkBtn.disabled = true;
+    checkBtn.firstChild.replaceWith(h('span', { class: 'spinner' }));
+    checkBtnLabel.textContent = 'Checking…';
+
+    const [m, c] = await Promise.allSettled([PROVIDERS.modrinth.updates(), PROVIDERS.curseforge.updates()]);
+
+    modrinthUpdates.clear();
+    curseForgeUpdates.clear();
+    let available = 0;
+    if (m.status === 'fulfilled') {
+      for (const u of m.value) { modrinthUpdates.set(u.projectId, u); if (u.updateAvailable) available++; }
+    } else toast(m.reason.message, 'err');
+    if (c.status === 'fulfilled') {
+      for (const u of c.value) { curseForgeUpdates.set(u.modId, u); if (u.updateAvailable) available++; }
+    } else toast(c.reason.message, 'err');
+
+    checkBtn.disabled = false;
+    checkBtn.firstChild.replaceWith(icon('refresh'));
+    checkBtnLabel.textContent = 'Check for updates';
+
+    toast(available === 0 ? 'Everything is up to date' : `${available} update${available === 1 ? '' : 's'} available`);
+    loadModrinthList();
+    loadCurseForgeList();
+  }
 
   const folderLabel = h('span', { class: 'sub mono ellipsis', style: { maxWidth: '440px' } }, '');
   const scanBody = h('div');
@@ -193,26 +242,59 @@ function renderInstalledTab(container) {
 
   container.append(scanSection);
 
-  function trackedTable(items, { nameKey, idKey, idParam, apiPrefix, emptyMessage }) {
+  function trackedTable(items, { nameKey, idKey, apiPrefix, providerKey, currentLabel, updates, emptyMessage }) {
     if (!items.length) return h('div', { class: 'empty-sub' }, emptyMessage);
+    const provider = PROVIDERS[providerKey];
+
+    function statusTag(status) {
+      if (!status) return null; // never checked — no noise before Check for updates runs
+      if (status.unavailable) return h('span', { class: 'tag bad', title: status.unavailable }, 'Check failed');
+      // "Newer:", never "Out of date" — the version picker makes pinning an
+      // older version deliberate, so nagging about a downgrade would be wrong.
+      if (status.updateAvailable) return h('span', { class: 'tag warn' }, `Newer: ${provider.updateLabel(status)}`);
+      return h('span', { class: 'tag ok' }, 'Up to date');
+    }
 
     return h('div', { class: 'table-wrap' }, h('table', { class: 'table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', {}, 'File'), h('th', {}))),
-      h('tbody', {}, items.map(i => h('tr', {},
-        h('td', { style: { fontWeight: 600 } }, i[nameKey]),
-        h('td', { class: 'dim small mono' }, i.fileName),
-        h('td', {}, h('button', {
-          class: 'btn sm danger', title: 'Delete the file and forget this install',
-          onclick: async () => {
-            if (!await confirmDialog('Remove', `Delete "${i.fileName}" and forget this install?`, { danger: true, okLabel: 'Remove' })) return;
-            try {
-              await api.del(`/api/${apiPrefix}/${encodeURIComponent(i[idKey])}`);
-              toast(`${i[nameKey]} removed`);
-              loadModrinthList();
-              loadCurseForgeList();
-            } catch (err) { toast(err.message, 'err'); }
-          },
-        }, icon('trash'))))))));
+      h('thead', {}, h('tr', {},
+        h('th', {}, 'Name'), h('th', {}, 'Installed'), h('th', {}, 'File'), h('th', {}, 'Newest'), h('th', {}))),
+      h('tbody', {}, items.map(i => {
+        const status = updates.get(i[idKey]);
+        return h('tr', {},
+          h('td', { style: { fontWeight: 600 } }, i[nameKey]),
+          h('td', {}, h('span', { class: 'tag' }, currentLabel(i))),
+          h('td', { class: 'dim small mono' }, i.fileName),
+          h('td', {}, statusTag(status)),
+          h('td', {}, h('div', { class: 'actions' },
+            status?.updateAvailable ? h('button', {
+              class: 'btn sm primary', title: `Install ${provider.updateLabel(status)}`,
+              onclick: async () => {
+                if (!await confirmDialog('Update', `Update ${i[nameKey]} from ${currentLabel(i)} to ${provider.updateLabel(status)}?`, { okLabel: 'Update' })) return;
+                try {
+                  await installTarget(provider, provider.updateTarget(i, status), i[nameKey]);
+                  // The check result now describes a version that's no longer
+                  // installed — clear it rather than leave a stale "Newer:"
+                  // claim about the file just installed. Back to blank until
+                  // the next explicit check, same as a fresh install.
+                  updates.delete(i[idKey]);
+                  loadModrinthList();
+                  loadCurseForgeList();
+                } catch (err) { toast(err.message, 'err'); }
+              },
+            }, icon('arrowUp'), 'Update') : null,
+            h('button', {
+              class: 'btn sm danger', title: 'Delete the file and forget this install',
+              onclick: async () => {
+                if (!await confirmDialog('Remove', `Delete "${i.fileName}" and forget this install?`, { danger: true, okLabel: 'Remove' })) return;
+                try {
+                  await api.del(`/api/${apiPrefix}/${encodeURIComponent(i[idKey])}`);
+                  toast(`${i[nameKey]} removed`);
+                  loadModrinthList();
+                  loadCurseForgeList();
+                } catch (err) { toast(err.message, 'err'); }
+              },
+            }, icon('trash')))));
+      }))));
   }
 
   async function loadModrinthList() {
@@ -223,7 +305,8 @@ function renderInstalledTab(container) {
     catch { items = []; }
     modrinthList.innerHTML = '';
     modrinthList.append(trackedTable(items, {
-      nameKey: 'projectTitle', idKey: 'projectId', apiPrefix: 'modrinth',
+      nameKey: 'projectTitle', idKey: 'projectId', apiPrefix: 'modrinth', providerKey: 'modrinth',
+      currentLabel: PROVIDERS.modrinth.currentLabel, updates: modrinthUpdates,
       emptyMessage: 'Nothing installed via Modrinth yet — try the Browse tab.',
     }));
   }
@@ -236,7 +319,8 @@ function renderInstalledTab(container) {
     catch { items = []; }
     curseForgeList.innerHTML = '';
     curseForgeList.append(trackedTable(items, {
-      nameKey: 'modName', idKey: 'modId', apiPrefix: 'curseforge',
+      nameKey: 'modName', idKey: 'modId', apiPrefix: 'curseforge', providerKey: 'curseforge',
+      currentLabel: PROVIDERS.curseforge.currentLabel, updates: curseForgeUpdates,
       emptyMessage: 'Nothing installed via CurseForge yet — try the Browse tab.',
     }));
   }
