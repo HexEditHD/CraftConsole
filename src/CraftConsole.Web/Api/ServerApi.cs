@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using CraftConsole.Core.Models;
+using CraftConsole.Core.Servers;
 using CraftConsole.Web.Services;
 
 namespace CraftConsole.Web.Api;
@@ -45,26 +46,42 @@ public static class ServerApi
         app.MapGet("/api/servers", async (ProfilesService profiles, ServerRegistry registry, SettingsHolder settings) =>
         {
             var list = await profiles.ListAsync();
+            var managed = list.Where(p => p.Mode == ConnectionMode.Managed).ToList();
 
             // Two Managed profiles sharing a server-port will have the second
             // fail to bind — which presents as a confusing crash rather than an
             // obvious config mistake. Surfacing the collision here lets the
-            // switcher warn before it happens rather than after.
-            var ports = list
-                .Where(p => p.Mode == ConnectionMode.Managed)
+            // switcher warn before it happens rather than after. ReadServerPort
+            // defaults to 25565 when server.properties doesn't exist yet — the
+            // normal state before a profile's first launch — so two brand new
+            // profiles that would both bind Minecraft's own default are still
+            // caught, not silently passed as "no conflict".
+            var ports = managed
                 .Select(p => (Profile: p, Port: ReadServerPort(p.WorkingDirectory)))
-                .Where(t => t.Port is not null)
                 .ToList();
-            var conflicting = ports
+            var conflictingPorts = ports
                 .GroupBy(t => t.Port)
                 .Where(g => g.Count() > 1)
                 .Select(g => g.Key)
                 .ToHashSet();
 
+            // Two Managed profiles pointed at the same directory is worse than a
+            // port clash — it's shared world files, not just a failed bind.
+            var dirs = managed
+                .Where(p => !string.IsNullOrWhiteSpace(p.WorkingDirectory))
+                .Select(p => (Profile: p, Full: Path.GetFullPath(p.WorkingDirectory)))
+                .ToList();
+            var conflictingDirs = dirs
+                .GroupBy(t => t.Full, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             var result = list.Select(p =>
             {
                 var sup = registry.TryGet(p.Id);
                 var port = ports.FirstOrDefault(t => t.Profile.Id == p.Id).Port;
+                var fullDir = dirs.FirstOrDefault(t => t.Profile.Id == p.Id).Full;
                 return new
                 {
                     p.Id,
@@ -72,7 +89,8 @@ public static class ServerApi
                     p.Mode,
                     Status = sup?.Status ?? ServerStatus.Stopped,
                     PlayerCount = sup?.PlayersSnapshot().Count ?? 0,
-                    PortConflict = port is not null && conflicting.Contains(port),
+                    PortConflict = p.Mode == ConnectionMode.Managed && conflictingPorts.Contains(port),
+                    WorkingDirectoryConflict = fullDir is not null && conflictingDirs.Contains(fullDir),
                 };
             }).ToList();
 
@@ -345,24 +363,14 @@ public static class ServerApi
         Capabilities = Core.Servers.ServerCapabilities.Managed,
     };
 
-    /// <summary>Reads server-port from a Managed profile's server.properties, for cross-profile conflict detection.</summary>
-    private static int? ReadServerPort(string workingDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(workingDirectory)) return null;
-        try
-        {
-            var path = Path.Combine(workingDirectory, "server.properties");
-            if (!File.Exists(path)) return null;
-            foreach (var line in File.ReadLines(path))
-            {
-                if (line.StartsWith("server-port=", StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(line["server-port=".Length..].Trim(), out var port))
-                    return port;
-            }
-        }
-        catch { /* unreadable — skip conflict detection for this profile */ }
-        return null;
-    }
+    /// <summary>
+    /// Reads server-port from a Managed profile's server.properties, for
+    /// cross-profile conflict detection. Defaults to Minecraft's own default,
+    /// 25565, when the file or the key doesn't exist yet, rather than treating
+    /// that as "no conflict" — see the caller's comment.
+    /// </summary>
+    private static int ReadServerPort(string workingDirectory)
+        => int.TryParse(ServerProperties.Read(workingDirectory, "server-port"), out var port) ? port : 25565;
 
     public record SimulateRequest(string[] Lines);
 

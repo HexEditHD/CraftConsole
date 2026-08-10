@@ -79,11 +79,19 @@ export function createServerSwitch() {
         h('span', { class: `server-dot ${statusClass(s.status)}` }),
         h('span', { class: 'name' }, s.name),
         s.mode === 'Rcon' ? h('span', { class: 'tag' }, 'RCON') : null,
+        // Real text, not an icon-only tag with a title — a title-only tooltip
+        // gives a screen reader nothing, and doesn't show on touch at all.
         s.portConflict
           ? h('span', {
               class: 'tag warn',
-              title: 'Another profile is configured with the same server-port.',
-            }, icon('warning'))
+              title: 'Another Managed profile is configured with the same server-port.',
+            }, 'Port conflict')
+          : null,
+        s.workingDirectoryConflict
+          ? h('span', {
+              class: 'tag warn',
+              title: 'Another Managed profile points at the same working directory.',
+            }, 'Same folder')
           : null,
         h('span', { class: 'spacer' }),
         h('span', { class: 'count' }, String(s.playerCount)));

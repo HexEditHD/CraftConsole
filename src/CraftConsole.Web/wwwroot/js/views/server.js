@@ -2,7 +2,7 @@
 import { h, icon, toast, confirmDialog, modal } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
-import { state } from '../store.js';
+import { state, hydrateServerList } from '../store.js';
 import { joinPath } from '../platform.js';
 import { openPathPicker, withBrowse } from '../components/path-picker.js';
 
@@ -128,6 +128,11 @@ export default {
         profiles = data.profiles ?? [];
         activeId = data.activeProfileId;
       } catch { profiles = []; }
+      // /api/profiles carries no port/working-directory conflict data — that
+      // only exists on /api/servers — so refresh it here too. This is the
+      // screen where a profile's port or folder actually gets fixed, and
+      // without this the flag would stay stale until switchServer() runs.
+      await hydrateServerList();
       buildProfileList();
     }
 
@@ -145,13 +150,29 @@ export default {
         const isRcon = p.mode === 'Rcon';
         const busy = ['Running', 'Starting', 'Stopping'].includes(state.status?.status);
         const status = state.status?.status ?? 'Stopped';
+        // Port/working-directory conflicts live on /api/servers, not
+        // /api/profiles — this is the screen you'd actually come to fix one,
+        // so it needs real visible text, not just the switcher's hover tag.
+        const conflict = state.servers.find(s => s.id === p.id);
         profileList.append(h('div', { class: `card profile-card${isActive ? ' active' : ''}`, style: { padding: '13px 16px' } },
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
               isRcon ? h('span', { class: 'tag' }, 'RCON') : h('span', { class: 'tag' }, p.type),
               !isRcon && p.minecraftVersion ? h('span', { class: 'tag' }, p.minecraftVersion) : null,
-              isActive ? h('span', { class: 'tag live' }, 'ACTIVE') : null),
+              isActive ? h('span', { class: 'tag live' }, 'ACTIVE') : null,
+              conflict?.portConflict
+                ? h('span', {
+                    class: 'tag warn',
+                    title: 'Another Managed profile is configured with the same server-port.',
+                  }, 'Port conflict')
+                : null,
+              conflict?.workingDirectoryConflict
+                ? h('span', {
+                    class: 'tag warn',
+                    title: 'Another Managed profile points at the same working directory.',
+                  }, 'Same folder')
+                : null),
             h('div', { class: 'meta' }, isRcon
               ? `${p.rconHost}:${p.rconPort}`
               : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),

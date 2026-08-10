@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CraftConsole.Core.Models;
 using CraftConsole.Core.Players;
+using CraftConsole.Core.Servers;
 using CraftConsole.Web.Services;
 
 namespace CraftConsole.Web.Api;
@@ -202,26 +203,7 @@ public static class PlayersApi
 
     /// <summary>Reads a single key from the server's server.properties.</summary>
     private static string? ReadServerProperty(ServerSupervisor sup, string key)
-    {
-        var workingDir = sup.ActiveProfile?.WorkingDirectory;
-        if (workingDir is null) return null;
-
-        try
-        {
-            var path = Path.Combine(workingDir, "server.properties");
-            if (!File.Exists(path)) return null;
-
-            var prefix = key + "=";
-            foreach (var line in File.ReadLines(path))
-            {
-                if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    return line[prefix.Length..].Trim();
-            }
-        }
-        catch { /* unreadable — treat as unset */ }
-
-        return null;
-    }
+        => sup.ActiveProfile?.WorkingDirectory is { } workingDir ? ServerProperties.Read(workingDir, key) : null;
 
     private static async Task<IResult> RunPlayerCommand(
         ServerSupervisor sup, string verb, string target, string? reason)
