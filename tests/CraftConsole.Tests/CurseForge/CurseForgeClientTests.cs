@@ -184,6 +184,37 @@ public class CurseForgeClientTests
     }
 
     [Fact]
+    public async Task GetModFiles_parses_display_name_release_type_and_file_date()
+    {
+        const string body = """
+            {"data":[{"id":999,"modId":12345,"fileName":"plugin-1.0.jar","displayName":"Plugin (1.0 Beta)",
+              "fileLength":10,"gameVersions":[],"releaseType":2,"fileDate":"2024-06-01T12:00:00Z"}]}
+            """;
+        var handler = new StubHandler().Json(body);
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        var file = Assert.Single(await client.GetModFilesAsync("key", 12345, null, null));
+
+        Assert.Equal("Plugin (1.0 Beta)", file.DisplayName);
+        Assert.Equal("beta", file.ReleaseType);
+        Assert.Equal(new DateTimeOffset(2024, 6, 1, 12, 0, 0, TimeSpan.Zero), file.FileDate);
+    }
+
+    [Fact]
+    public async Task GetModFiles_falls_back_to_the_file_name_when_no_display_name_is_given()
+    {
+        const string body = """{"data":[{"id":999,"modId":12345,"fileName":"plugin.jar","fileLength":10,"gameVersions":[]}]}""";
+        var handler = new StubHandler().Json(body);
+        var client = new CurseForgeClient(new HttpClient(handler));
+
+        var file = Assert.Single(await client.GetModFilesAsync("key", 12345, null, null));
+
+        Assert.Equal("plugin.jar", file.DisplayName);
+        Assert.Equal("", file.ReleaseType);
+        Assert.Null(file.FileDate);
+    }
+
+    [Fact]
     public async Task GetModFiles_treats_a_missing_dependencies_property_as_no_dependencies()
     {
         const string body = """

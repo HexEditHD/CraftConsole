@@ -2,7 +2,7 @@
 // remove anything installed via Modrinth/CurseForge) and Browse (search
 // either provider and install a plugin/mod, with a prompt for required
 // dependencies).
-import { h, icon, toast, confirmDialog, debounce } from '../ui.js';
+import { h, icon, toast, confirmDialog, debounce, modal, timeAgo } from '../ui.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
 
@@ -60,9 +60,15 @@ const PROVIDERS = {
     unavailableReason: '',
     search: query => api.get(`/api/modrinth/search?query=${encodeURIComponent(query)}&limit=24`),
     normalizeHit: h => ({ key: h.projectId, title: h.title, author: h.author, downloads: h.downloads, iconUrl: h.iconUrl, description: h.description }),
-    resolveTarget: async hit => {
-      const versions = await api.get(`/api/modrinth/versions?projectId=${encodeURIComponent(hit.key)}`);
-      return versions.length ? { versionId: versions[0].id } : null;
+    // Already loader/game-version filtered and newest-first — listOptions just
+    // reshapes each version into what pickVersion needs to render an option
+    // and what installTarget needs to install it.
+    listOptions: async key => {
+      const versions = await api.get(`/api/modrinth/versions?projectId=${encodeURIComponent(key)}`);
+      return versions.map(v => ({
+        label: v.versionNumber, channel: v.versionType, published: v.datePublished,
+        target: { versionId: v.id },
+      }));
     },
     install: (target, includeDependencies) => api.post('/api/modrinth/install', { versionId: target.versionId, includeDependencies }),
   },
@@ -73,9 +79,12 @@ const PROVIDERS = {
     unavailableReason: 'Add a CurseForge API key in Settings → Integrations & about to browse CurseForge.',
     search: query => api.get(`/api/curseforge/search?query=${encodeURIComponent(query)}&limit=24`),
     normalizeHit: h => ({ key: h.modId, title: h.name, author: h.author, downloads: h.downloads, iconUrl: h.iconUrl, description: h.summary }),
-    resolveTarget: async hit => {
-      const files = await api.get(`/api/curseforge/files?modId=${encodeURIComponent(hit.key)}`);
-      return files.length ? { modId: hit.key, fileId: files[0].id } : null;
+    listOptions: async key => {
+      const files = await api.get(`/api/curseforge/files?modId=${encodeURIComponent(key)}`);
+      return files.map(f => ({
+        label: f.displayName || f.fileName, channel: f.releaseType, published: f.fileDate,
+        target: { modId: key, fileId: f.id },
+      }));
     },
     install: (target, includeDependencies) => api.post('/api/curseforge/install', { modId: target.modId, fileId: target.fileId, includeDependencies }),
   },
@@ -83,6 +92,83 @@ const PROVIDERS = {
 
 const depName = d => d.projectTitle ?? d.modName;
 const installName = i => i.projectTitle ?? i.modName;
+
+// ── Version picker ───────────────────────────────────────────────────────
+// Module scope, not renderBrowseTab-local: the Installed tab's Update action
+// (Check-for-updates) reuses installTarget too, and neither this nor
+// pickVersion closes over anything from that view.
+function optionLabel(o) {
+  const channel = o.channel ? `${o.channel}, ` : '';
+  return `${o.label}  —  ${channel}${timeAgo(o.published)}`;
+}
+
+/** Resolves to the chosen {versionId} / {modId, fileId} target, or null if cancelled. */
+async function pickVersion(provider, key, title) {
+  let options;
+  try { options = await provider.listOptions(key); }
+  catch (err) { toast(err.message, 'err'); return null; }
+  if (!options.length) { toast(`No file of "${title}" is compatible with this server.`, 'err'); return null; }
+
+  const running = ['Running', 'Starting'].includes(state.status?.status ?? 'Stopped');
+
+  return new Promise(resolve => {
+    const select = h('select', { class: 'select' },
+      options.map((o, i) => h('option', { value: String(i) }, optionLabel(o))));
+    const channelTag = h('span', { class: 'tag warn', style: { display: 'none' } });
+
+    const syncChannelTag = () => {
+      const channel = options[Number(select.value)].channel;
+      if (channel && channel !== 'release') {
+        channelTag.textContent = channel;
+        channelTag.style.display = '';
+      } else {
+        channelTag.style.display = 'none';
+      }
+    };
+    select.addEventListener('change', syncChannelTag);
+    syncChannelTag();
+
+    let picked = null;
+    modal({
+      title: `Install "${title}"`,
+      body: h('div', {},
+        running
+          ? h('div', { class: 'banner warn inline', style: { margin: '0 0 14px' } },
+              icon('alert'),
+              h('span', {},
+                'The server is running. The new file loads on the next restart, and on Windows the old one may be locked until then.'))
+          : null,
+        h('div', { class: 'field' },
+          h('label', {}, 'Version'),
+          h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, select, channelTag),
+          h('span', { class: 'hint' },
+            "Newest first. Only versions matching this server's loader and Minecraft version are listed."))),
+      onClose: () => resolve(picked),
+      actions: [
+        { label: 'Cancel', kind: 'ghost' },
+        { label: 'Install', kind: 'primary', onClick: () => { picked = options[Number(select.value)].target; } },
+      ],
+    });
+  });
+}
+
+async function installTarget(provider, target, title, includeDependencies = false) {
+  const result = await provider.install(target, includeDependencies);
+
+  if (result.needsDependencyConfirmation) {
+    const names = result.requiredDependencies.map(depName).join(', ');
+    if (await confirmDialog('Required dependencies', `"${title}" requires: ${names}. Install them too?`, { okLabel: 'Install all' })) {
+      await installTarget(provider, target, title, true);
+    } else {
+      toast(`"${title}" needs its required dependencies — not installed.`, 'err');
+    }
+    return;
+  }
+
+  const running = ['Running', 'Starting'].includes(state.status?.status ?? 'Stopped');
+  toast(`Installed ${result.installed.map(installName).join(', ')}${running ? ' — restart the server to load it' : ''}`);
+  for (const warning of result.warnings ?? []) toast(warning, 'err', 6000);
+}
 
 // ── Installed ────────────────────────────────────────────────────────────
 function renderInstalledTab(container) {
@@ -286,7 +372,7 @@ function renderBrowseTab(container) {
   }
 
   function hitCard(provider, hit) {
-    const installBtn = h('button', { class: 'btn sm primary', onclick: () => install(provider, hit, installBtn) }, icon('download'), 'Install');
+    const installBtn = h('button', { class: 'btn sm primary', onclick: () => install(provider, hit, installBtn) }, icon('download'), 'Install…');
     return h('div', { class: 'card', style: { padding: '12px 14px' } },
       h('div', { style: { display: 'flex', gap: '10px', alignItems: 'flex-start' } },
         hit.iconUrl
@@ -302,28 +388,11 @@ function renderBrowseTab(container) {
   async function install(provider, hit, btn) {
     btn.disabled = true;
     try {
-      const target = await provider.resolveTarget(hit);
-      if (!target) { toast(`No file of "${hit.title}" is compatible with this server.`, 'err'); return; }
+      const target = await pickVersion(provider, hit.key, hit.title);
+      if (!target) return;
       await installTarget(provider, target, hit.title);
     } catch (err) { toast(err.message, 'err'); }
     finally { btn.disabled = false; }
-  }
-
-  async function installTarget(provider, target, title, includeDependencies = false) {
-    const result = await provider.install(target, includeDependencies);
-
-    if (result.needsDependencyConfirmation) {
-      const names = result.requiredDependencies.map(depName).join(', ');
-      if (await confirmDialog('Required dependencies', `"${title}" requires: ${names}. Install them too?`, { okLabel: 'Install all' })) {
-        await installTarget(provider, target, title, true);
-      } else {
-        toast(`"${title}" needs its required dependencies — not installed.`, 'err');
-      }
-      return;
-    }
-
-    toast(`Installed ${result.installed.map(installName).join(', ')}`);
-    for (const warning of result.warnings ?? []) toast(warning, 'err', 6000);
   }
 
   buildProviderSeg();

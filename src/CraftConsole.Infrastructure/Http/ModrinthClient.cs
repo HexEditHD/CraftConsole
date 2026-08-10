@@ -18,8 +18,14 @@ public record ModrinthFile(string Url, string FileName, bool Primary, long Size)
 /// </summary>
 public record ModrinthDependency(string? VersionId, string? ProjectId, string? FileName, string DependencyType);
 
+/// <summary>
+/// VersionType is Modrinth's own "release"/"beta"/"alpha" release channel,
+/// defaulted to "" rather than "release" when absent — labeling an unknown
+/// channel as a release would be more misleading than showing nothing.
+/// </summary>
 public record ModrinthVersion(
     string Id, string ProjectId, string Name, string VersionNumber,
+    string VersionType, DateTimeOffset? DatePublished,
     List<string> GameVersions, List<string> Loaders,
     List<ModrinthDependency> Dependencies, List<ModrinthFile> Files);
 
@@ -135,6 +141,8 @@ public class ModrinthClient
             v.GetProperty("project_id").GetString()!,
             v.GetProperty("name").GetString() ?? "",
             v.GetProperty("version_number").GetString() ?? "",
+            v.TryGetProperty("version_type", out var vt) && vt.ValueKind == JsonValueKind.String ? vt.GetString()! : "",
+            v.TryGetProperty("date_published", out var dp) && dp.TryGetDateTimeOffset(out var published) ? published : null,
             [.. v.GetProperty("game_versions").EnumerateArray().Select(g => g.GetString()!)],
             [.. v.GetProperty("loaders").EnumerateArray().Select(l => l.GetString()!)],
             deps,

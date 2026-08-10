@@ -191,6 +191,37 @@ public class ModrinthClientTests
     }
 
     [Fact]
+    public async Task GetProjectVersions_parses_version_type_and_date_published()
+    {
+        const string body = """
+            [{"id":"v1","project_id":"abc123","name":"n","version_number":"1.0","version_type":"beta",
+              "date_published":"2024-06-01T12:00:00Z","game_versions":[],"loaders":[],
+              "files":[{"url":"https://x/file.jar","filename":"file.jar","primary":true,"size":10}]}]
+            """;
+        var client = NewClient(out _, body);
+
+        var version = Assert.Single(await client.GetProjectVersionsAsync("abc123", [], null));
+
+        Assert.Equal("beta", version.VersionType);
+        Assert.Equal(new DateTimeOffset(2024, 6, 1, 12, 0, 0, TimeSpan.Zero), version.DatePublished);
+    }
+
+    [Fact]
+    public async Task GetProjectVersions_defaults_version_type_and_date_published_when_absent()
+    {
+        const string body = """
+            [{"id":"v2","project_id":"abc123","name":"n","version_number":"1.0","game_versions":[],"loaders":[],
+              "files":[{"url":"https://x/file.jar","filename":"file.jar","primary":true,"size":10}]}]
+            """;
+        var client = NewClient(out _, body);
+
+        var version = Assert.Single(await client.GetProjectVersionsAsync("abc123", [], null));
+
+        Assert.Equal("", version.VersionType);
+        Assert.Null(version.DatePublished);
+    }
+
+    [Fact]
     public async Task GetProjectVersions_treats_a_missing_dependencies_property_as_no_dependencies()
     {
         const string body = """
