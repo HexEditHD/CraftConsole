@@ -5,6 +5,7 @@ import { on } from '../bus.js';
 import { state, hydrateServerList } from '../store.js';
 import { joinPath } from '../platform.js';
 import { openPathPicker, withBrowse } from '../components/path-picker.js';
+import { changeServerPort } from '../components/port-editor.js';
 
 export default {
   id: 'server',
@@ -191,6 +192,12 @@ export default {
                   onclick: () => start(p.id),
                   disabled: busy,
                 }, icon('play'), isRcon ? 'Switch & connect' : 'Switch & start'),
+            conflict?.portConflict
+              ? h('button', {
+                  class: 'btn sm', title: 'Change this server’s port',
+                  onclick: () => changeServerPort(conflict),
+                }, 'Change port')
+              : null,
             h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${p.name}”`, onclick: () => openProfileEditor(p) }, icon('pencilSimple')),
             h('button', {
               class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${p.name}”`,
@@ -524,13 +531,17 @@ export default {
     });
 
     const offStatus = on('store:status', buildProfileList);
+    // Port/working-directory conflict flags live on state.servers, not
+    // state.status — refresh here too so a port changed from the switcher
+    // (or cleared by editing another profile) shows up without a reload.
+    const offServers = on('store:servers', buildProfileList);
 
     loadProfiles();
     loadTypes();
     detectJava();
     loadJavaVersions();
 
-    return () => { offSetup(); offStatus(); };
+    return () => { offSetup(); offStatus(); offServers(); };
   },
 };
 

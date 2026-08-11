@@ -3,6 +3,7 @@
 // #page-title's job; which *server* is this one's.
 import { h, icon } from '../ui.js';
 import { state, switchServer } from '../store.js';
+import { changeServerPort } from './port-editor.js';
 
 function statusClass(status) {
   switch (status) {
@@ -66,35 +67,54 @@ export function createServerSwitch() {
     menu.innerHTML = '';
     for (const s of state.servers) {
       const isCurrent = s.id === state.currentServerId;
-      const row = h('button', {
-        class: `server-switch-item${isCurrent ? ' current' : ''}`,
+      // A nested <button> inside the switch button isn't valid HTML — the
+      // fix-port action for a conflict has to be a sibling control, not a
+      // child of the row that switches servers.
+      const mainBtn = h('button', {
+        class: 'server-switch-item-main',
         onclick: async () => {
           close();
           if (isCurrent) return;
-          row.disabled = true;
+          mainBtn.disabled = true;
           try { await switchServer(s.id); }
-          finally { row.disabled = false; }
+          finally { mainBtn.disabled = false; }
         },
       },
         h('span', { class: `server-dot ${statusClass(s.status)}` }),
         h('span', { class: 'name' }, s.name),
         s.mode === 'Rcon' ? h('span', { class: 'tag' }, 'RCON') : null,
-        // Real text, not an icon-only tag with a title — a title-only tooltip
-        // gives a screen reader nothing, and doesn't show on touch at all.
-        s.portConflict
-          ? h('span', {
-              class: 'tag warn',
-              title: 'Another Managed profile is configured with the same server-port.',
-            }, 'Port conflict')
-          : null,
-        s.workingDirectoryConflict
-          ? h('span', {
-              class: 'tag warn',
-              title: 'Another Managed profile points at the same working directory.',
-            }, 'Same folder')
-          : null,
         h('span', { class: 'spacer' }),
         h('span', { class: 'count' }, String(s.playerCount)));
+
+      const row = h('div', { class: `server-switch-item${isCurrent ? ' current' : ''}` }, mainBtn);
+
+      if (s.portConflict || s.workingDirectoryConflict) {
+        row.append(h('div', { class: 'server-switch-conflicts' },
+          // Real text, not an icon-only tag with a title — a title-only
+          // tooltip gives a screen reader nothing, and doesn't show on touch.
+          s.portConflict
+            ? h('span', {
+                class: 'tag warn',
+                title: 'Another Managed profile is configured with the same server-port.',
+              }, 'Port conflict')
+            : null,
+          s.workingDirectoryConflict
+            ? h('span', {
+                class: 'tag warn',
+                title: 'Another Managed profile points at the same working directory.',
+              }, 'Same folder')
+            : null,
+          // Only a port conflict has a one-click fix — a working-directory
+          // clash needs a real decision (which profile keeps the folder),
+          // not a quick edit.
+          s.portConflict
+            ? h('button', {
+                class: 'btn sm ghost', title: 'Change this server’s port',
+                onclick: e => { e.stopPropagation(); close(); changeServerPort(s); },
+              }, 'Change port')
+            : null));
+      }
+
       menu.append(row);
     }
   }

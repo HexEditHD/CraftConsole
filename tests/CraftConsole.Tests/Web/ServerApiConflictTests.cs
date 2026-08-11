@@ -144,4 +144,67 @@ public sealed class ServerApiConflictTests : IAsyncDisposable
         Assert.False(Find(servers, a).GetProperty("workingDirectoryConflict").GetBoolean());
         Assert.False(Find(servers, b).GetProperty("workingDirectoryConflict").GetBoolean());
     }
+
+    // ── Changing the port ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Changing_the_port_clears_a_conflict_between_two_profiles()
+    {
+        var a = await CreateManagedProfileAsync("A", NewServerDir(), serverPort: 25565);
+        var b = await CreateManagedProfileAsync("B", NewServerDir(), serverPort: 25565);
+        Assert.True(Find(await GetServersAsync(), a).GetProperty("portConflict").GetBoolean());
+
+        var change = await _client.PutAsJsonAsync($"/api/servers/{b}/server-port", new { port = 25566 });
+        Assert.Equal(System.Net.HttpStatusCode.NoContent, change.StatusCode);
+
+        var servers = await GetServersAsync();
+        Assert.False(Find(servers, a).GetProperty("portConflict").GetBoolean());
+        Assert.False(Find(servers, b).GetProperty("portConflict").GetBoolean());
+        Assert.Equal(25566, Find(servers, b).GetProperty("port").GetInt32());
+    }
+
+    [Fact]
+    public async Task Changing_the_port_preserves_the_rest_of_server_properties()
+    {
+        var dir = NewServerDir();
+        var a = await CreateManagedProfileAsync("A", dir, serverPort: 25565);
+        await File.AppendAllTextAsync(Path.Combine(dir, "server.properties"), "motd=Hello world\n");
+
+        await _client.PutAsJsonAsync($"/api/servers/{a}/server-port", new { port = 25580 });
+
+        var text = await File.ReadAllTextAsync(Path.Combine(dir, "server.properties"));
+        Assert.Contains("motd=Hello world", text);
+        Assert.Contains("server-port=25580", text);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(70000)]
+    [InlineData(-1)]
+    public async Task Changing_the_port_rejects_an_out_of_range_value(int port)
+    {
+        var a = await CreateManagedProfileAsync("A", NewServerDir(), serverPort: 25565);
+
+        var res = await _client.PutAsJsonAsync($"/api/servers/{a}/server-port", new { port });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Changing_the_port_is_rejected_for_an_rcon_profile()
+    {
+        var a = await CreateProfileAsync(new { name = "A", mode = "Rcon", rconHost = "127.0.0.1", rconPort = 25575 });
+
+        var res = await _client.PutAsJsonAsync($"/api/servers/{a}/server-port", new { port = 25566 });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Changing_the_port_for_an_unknown_profile_returns_not_found()
+    {
+        var res = await _client.PutAsJsonAsync($"/api/servers/{Guid.NewGuid()}/server-port", new { port = 25566 });
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, res.StatusCode);
+    }
 }
