@@ -10,6 +10,7 @@ public static class ServerApi
 {
     public record CommandRequest(string Command);
     public record StartRequest(Guid? ProfileId);
+    public record SetPortRequest(int Port);
 
     /// <summary>
     /// Panel version, from the assembly's informational version (set by the
@@ -89,6 +90,7 @@ public static class ServerApi
                     p.Mode,
                     Status = sup?.Status ?? ServerStatus.Stopped,
                     PlayerCount = sup?.PlayersSnapshot().Count ?? 0,
+                    Port = p.Mode == ConnectionMode.Managed ? port : (int?)null,
                     PortConflict = p.Mode == ConnectionMode.Managed && conflictingPorts.Contains(port),
                     WorkingDirectoryConflict = fullDir is not null && conflictingDirs.Contains(fullDir),
                 };
@@ -102,6 +104,24 @@ public static class ServerApi
             // which is the ordinary case for most entries in this list.
             return Results.Json(new { Servers = result, ActiveProfileId = settings.Current.ActiveProfileId }, Json.Options);
         }).RequireRole(Role.Operator);
+
+        // Deliberately not routed through ServerScope/ServerSupervisor — a
+        // Managed profile's port is a server.properties edit, which doesn't
+        // need (and shouldn't require) the profile to have ever been started.
+        // The switcher and Server screen both use this to resolve a
+        // PortConflict without leaving the current view.
+        app.MapPut("/api/servers/{id:guid}/server-port", async (Guid id, SetPortRequest req, ProfilesService profiles) =>
+        {
+            var profile = await profiles.GetAsync(id);
+            if (profile is null) return Results.NotFound();
+            if (profile.Mode != ConnectionMode.Managed)
+                return Results.BadRequest(new { Message = "Only a locally managed server has a server.properties file to edit." });
+            if (req.Port is < 1 or > 65535)
+                return Results.BadRequest(new { Message = "Port must be between 1 and 65535." });
+
+            ServerProperties.Write(profile.WorkingDirectory, "server-port", req.Port.ToString());
+            return Results.NoContent();
+        }).RequireRole(Role.Admin);
 
         // ── Status ────────────────────────────────────────────────────────
         app.MapGet("/api/servers/{id:guid}/status", async (Guid id, ProfilesService profiles, ServerRegistry registry) =>

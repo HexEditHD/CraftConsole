@@ -247,16 +247,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .server-dot.bad  { background: var(--bad); }
 .server-dot.warn { background: var(--warn); }
 
+/* Real button chrome — previously background:none/border:none made this
+   read as a plain status readout, not a control, especially with the
+   chevron hidden until a second server existed. A picker has to look
+   pickable before there's anything to pick between. */
 .server-switch-trigger {
   display: flex; align-items: center; gap: var(--s2);
-  background: none; border: none; padding: 0; margin: 0;
+  background: var(--sheet); border: 1px solid var(--rule-firm); border-radius: var(--r);
+  padding: 5px var(--s3); margin: 0;
   font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink);
   cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
 }
-.server-switch-trigger:disabled { cursor: default; }
-/* Only a real affordance once there's something to switch to. */
-.server-switch-trigger:not(.has-menu) .icon { display: none; }
+.server-switch-trigger.has-menu:hover:not(:disabled) { background: var(--sheet-3); border-color: var(--n-300); }
+.server-switch-trigger:disabled { cursor: default; background: transparent; border-color: transparent; padding: 5px 0; }
+/* The chevron stays visible even with one server — a disabled combo box
+   still shows its arrow, so the control reads as "a picker with nothing
+   to pick yet" rather than not being a picker at all. */
 .server-switch-trigger .icon { width: 11px; height: 11px; color: var(--ink-low); transition: transform var(--fast); }
+.server-switch-trigger:disabled .icon { opacity: .35; }
 .server-switch-trigger[aria-expanded="true"] .icon { transform: rotate(180deg); }
 
 .server-switch-menu {
@@ -266,18 +275,23 @@ button, input, select, textarea { font: inherit; color: inherit; }
   box-shadow: 0 8px 24px rgba(0,6,14,.55);
 }
 .server-switch-item {
+  display: flex; flex-direction: column;
+  border-bottom: 1px solid var(--rule);
+}
+.server-switch-item:last-child { border-bottom: none; }
+.server-switch-item-main {
   display: flex; align-items: center; gap: var(--s2); width: 100%;
   padding: var(--s2) var(--s3);
-  background: none; border: none; border-bottom: 1px solid var(--rule);
+  background: none; border: none;
   font-family: var(--f-mono); font-size: var(--t-sm); color: var(--ink-mid);
   cursor: pointer; text-align: left;
   transition: background var(--fast), color var(--fast);
 }
-.server-switch-item:last-child { border-bottom: none; }
-.server-switch-item:hover { background: var(--sheet-3); color: var(--ink); }
-.server-switch-item.current { color: var(--blue); background: var(--blue-wash); }
+.server-switch-item-main:hover { background: var(--sheet-3); color: var(--ink); }
+.server-switch-item.current .server-switch-item-main { color: var(--blue); background: var(--blue-wash); }
 .server-switch-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .server-switch-item .count { flex-shrink: 0; font-size: var(--t-xs); color: var(--ink-low); }
+.server-switch-conflicts { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding: 0 var(--s3) var(--s2); }
 
 /* Readings sit in their own cells of the title block. */
 .readings { display: flex; margin-left: auto; flex-shrink: 0; }

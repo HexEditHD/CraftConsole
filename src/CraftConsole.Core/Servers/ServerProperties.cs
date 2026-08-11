@@ -27,4 +27,25 @@ public static class ServerProperties
         catch { /* unreadable — treat as unset */ }
         return null;
     }
+
+    /// <summary>
+    /// Replaces one key's value, preserving every other line and their order.
+    /// Appends the key if it wasn't already present, and creates the file (and
+    /// directory) if this profile has never been launched yet — the same
+    /// "works before first run" behaviour Read's 25565 port default assumes.
+    /// </summary>
+    public static void Write(string workingDirectory, string key, string value)
+    {
+        Directory.CreateDirectory(workingDirectory);
+        var path = Path.Combine(workingDirectory, "server.properties");
+        var lines = File.Exists(path) ? File.ReadAllLines(path).ToList() : [];
+
+        var prefix = key + "=";
+        var index = lines.FindIndex(l => l.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        var line = prefix + value;
+        if (index >= 0) lines[index] = line;
+        else lines.Add(line);
+
+        File.WriteAllLines(path, lines);
+    }
 }
