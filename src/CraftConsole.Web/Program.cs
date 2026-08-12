@@ -54,6 +54,10 @@ builder.Services.AddSingleton(new HttpClient());
 builder.Services.AddSingleton<DownloadService>();
 builder.Services.AddSingleton<ServerDownloadService>();
 builder.Services.AddSingleton<JavaDownloadService>();
+builder.Services.AddSingleton<ModrinthClient>();
+builder.Services.AddSingleton<ModrinthService>();
+builder.Services.AddSingleton<CurseForgeClient>();
+builder.Services.AddSingleton<CurseForgeService>();
 
 // Key ring pinned to the app data directory: the default location ignores
 // --data-dir, which would leave the Debian service unable to decrypt RCON
@@ -62,6 +66,7 @@ builder.Services.AddDataProtection()
     .SetApplicationName("CraftConsole")
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(appDataPath, "dpkeys")));
 builder.Services.AddSingleton<RconSecretStore>();
+builder.Services.AddSingleton<CurseForgeSecretStore>();
 
 // TLS certificate resolution has to happen before Build() so Kestrel's HTTPS defaults can be
 // wired up — but the DI-registered IDataProtectionProvider above only exists after Build().
@@ -81,7 +86,10 @@ if (httpsEnabled)
 }
 
 builder.Services.AddSingleton<EventBroker>();
-builder.Services.AddSingleton<ServerSupervisor>();
+// ServerSupervisor is no longer registered directly — one exists per server,
+// owned by this registry. See ServerRegistry's and ServerSupervisor's own
+// doc comments for why.
+builder.Services.AddSingleton<ServerRegistry>();
 builder.Services.AddSingleton<ProfilesService>();
 builder.Services.AddSingleton<BackupService>();
 builder.Services.AddSingleton<SetupService>();
@@ -94,6 +102,15 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<SchedulerService>(
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
+
+// ASP.NET Core's own multipart body limit (128 MB) applies independently of
+// Kestrel's request body limit — the upload routes disable the latter, but
+// still need this raised too, or a large world upload is rejected before
+// WorkspaceApi's own size check ever runs.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = WorkspaceApi.MaxUploadBytes;
 });
 
 var app = builder.Build();
@@ -125,6 +142,18 @@ app.Use(async (ctx, next) =>
         return;
     }
 
+    // The login/setup page is rendered by this gate itself, so its own webfonts
+    // have to be reachable without a session. Otherwise they fall through to the
+    // catch-all below and the browser is handed login HTML in place of a woff2
+    // ("OTS parsing error: invalid sfntVersion"), leaving the very first screen
+    // a user sees on a fallback system face. Fonts are static and carry no
+    // session state, so only GET/HEAD is opened up.
+    if ((HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method))
+        && ctx.Request.Path.StartsWithSegments("/fonts"))
+    {
+        await next();
+        return;
+    }
     var auth = ctx.RequestServices.GetRequiredService<AuthService>();
     var session = auth.TryValidateSession(ctx.Request.Cookies[AuthApi.CookieName]);
     if (session is not null)
@@ -188,6 +217,8 @@ app.MapPlayersApi();
 app.MapWorkspaceApi();
 app.MapAutomationApi();
 app.MapSetupApi();
+app.MapModrinthApi();
+app.MapCurseForgeApi();
 app.MapSystemApi();
 app.MapUsersApi();
 
@@ -197,11 +228,18 @@ if (httpsEnabled)
 if (app.Environment.IsDevelopment())
     app.MapDevApi();
 
-// Gracefully stop a running server when the panel shuts down
+// Gracefully stop every running server when the panel shuts down. Resolved
+// once here rather than via app.Services inside the callback: on a
+// failed-startup path this Stopping callback can fire while the provider is
+// already disposing, and GetRequiredService at that point throws
+// ObjectDisposedException — harmless (nothing was running to stop) but noisy
+// in exactly the shutdown path this exists for. The registry itself stays
+// valid to call even after the provider starts disposing; only resolving a
+// *new* service from it does not.
+var serverRegistry = app.Services.GetRequiredService<ServerRegistry>();
 app.Lifetime.ApplicationStopping.Register(() =>
 {
-    var supervisor = app.Services.GetRequiredService<ServerSupervisor>();
-    supervisor.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    serverRegistry.DisposeAllAsync().GetAwaiter().GetResult();
 });
 
 // Open the panel in the default browser. Skipped for dev runs, for --no-browser,

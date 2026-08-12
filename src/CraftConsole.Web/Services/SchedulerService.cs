@@ -8,12 +8,19 @@ namespace CraftConsole.Web.Services;
 /// Executes scheduled tasks: interval timers, daily HH:mm triggers, and
 /// game-event triggers (player join / server ready). Tasks persist to
 /// tasks.json in the app data folder — same file the desktop app used.
+///
+/// Each task targets one server via ServerId. Game-event triggers (PlayerJoin,
+/// ServerReady) are evaluated against every server: this service subscribes to
+/// GameEvent on every supervisor the registry already knows about, and on every
+/// one created afterwards, so a server started after this service starts is
+/// still covered.
 /// </summary>
 public sealed class SchedulerService : BackgroundService
 {
-    private readonly ServerSupervisor _supervisor;
+    private readonly ServerRegistry _registry;
     private readonly BackupService _backups;
     private readonly EventBroker _broker;
+    private readonly SettingsHolder _settings;
     private readonly ILogger<SchedulerService> _log;
     private readonly JsonFileStore<List<ScheduledTask>> _store;
 
@@ -26,21 +33,39 @@ public sealed class SchedulerService : BackgroundService
     private readonly Dictionary<Guid, DateTimeOffset> _nextDue = [];
     private string _lastCronMinute = "";
 
+    // Tracks which servers' GameEvent this service has already hooked, so
+    // SupervisorCreated firing for one already subscribed via All() at
+    // construction can't double-subscribe it.
+    private readonly HashSet<Guid> _subscribedServers = [];
+    private readonly object _subscribeLock = new();
+
     /// <summary>How often trigger conditions are evaluated.</summary>
     internal static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
     public SchedulerService(
-        ServerSupervisor supervisor, BackupService backups, EventBroker broker, SettingsHolder settings,
+        ServerRegistry registry, BackupService backups, EventBroker broker, SettingsHolder settings,
         ILogger<SchedulerService> log, TimeProvider? timeProvider = null)
     {
-        _supervisor = supervisor;
+        _registry = registry;
         _backups = backups;
         _broker = broker;
+        _settings = settings;
         _log = log;
         _time = timeProvider ?? TimeProvider.System;
         _store = new JsonFileStore<List<ScheduledTask>>(settings.AppDataPath, "tasks.json");
 
-        _supervisor.GameEvent += OnGameEvent;
+        _registry.SupervisorCreated += SubscribeTo;
+        foreach (var supervisor in _registry.All())
+            SubscribeTo(supervisor);
+    }
+
+    private void SubscribeTo(ServerSupervisor supervisor)
+    {
+        lock (_subscribeLock)
+        {
+            if (!_subscribedServers.Add(supervisor.ServerId)) return;
+        }
+        supervisor.GameEvent += OnGameEvent;
     }
 
     public List<ScheduledTask> Snapshot()
@@ -52,6 +77,7 @@ public sealed class SchedulerService : BackgroundService
     {
         lock (_lock)
         {
+            task.ServerId ??= CurrentServerId();
             _tasks.Add(task);
             ScheduleNextDue(task);
         }
@@ -65,6 +91,7 @@ public sealed class SchedulerService : BackgroundService
         {
             var task = _tasks.FirstOrDefault(t => t.Id == id);
             if (task is null) return false;
+            task.ServerId = updated.ServerId ?? CurrentServerId();
             task.Name = updated.Name;
             task.TriggerType = updated.TriggerType;
             task.TriggerValue = updated.TriggerValue;
@@ -156,23 +183,29 @@ public sealed class SchedulerService : BackgroundService
     /// Reads tasks.json into the live list. Merges rather than replaces: the
     /// service is a singleton as well as a hosted service, so an AddAsync can
     /// land between construction and the loop starting, and replacing the list
-    /// outright would drop it.
+    /// outright would drop it. A task saved before multi-server existed has no
+    /// ServerId — migrated here to whatever was "the" server at the time.
     /// </summary>
     internal async Task LoadAsync()
     {
         var loaded = await _store.LoadAsync() ?? [];
+        var fallback = CurrentServerId();
 
         lock (_lock)
         {
             foreach (var task in loaded)
             {
                 if (_tasks.Any(t => t.Id == task.Id)) continue;
+                task.ServerId ??= fallback;
                 _tasks.Add(task);
             }
 
             foreach (var task in _tasks) ScheduleNextDue(task);
         }
     }
+
+    private Guid? CurrentServerId()
+        => Guid.TryParse(_settings.Current.ActiveProfileId, out var id) ? id : null;
 
     private void ScheduleNextDue(ScheduledTask task)
     {
@@ -205,20 +238,40 @@ public sealed class SchedulerService : BackgroundService
             _ = ExecuteTaskAsync(task);
     }
 
+    /// <summary>
+    /// Resolves the server a task targets, falling back to whichever profile is
+    /// currently active if the task predates having one of its own (defensive —
+    /// LoadAsync already migrates stored tasks; this covers one added via
+    /// AddAsync/UpdateAsync by a caller that didn't set ServerId either).
+    /// GetOrCreate rather than TryGet: a task targeting a server that has never
+    /// been started should still resolve to a real (idle) supervisor, so the
+    /// action below reports its own "not running" error rather than this
+    /// method reporting a misleading "no such server".
+    /// </summary>
+    private ServerSupervisor? ResolveTarget(ScheduledTask task)
+    {
+        var id = task.ServerId ?? CurrentServerId();
+        return id is { } serverId ? _registry.GetOrCreate(serverId) : null;
+    }
+
     private async Task ExecuteTaskAsync(ScheduledTask task)
     {
         try
         {
+            var supervisor = ResolveTarget(task)
+                ?? throw new InvalidOperationException(
+                    "This task has no server to target — set one on the task, or make a server active.");
+
             switch (task.ActionType)
             {
                 case TaskActionType.SendCommand:
-                    await _supervisor.SendCommandAsync(task.ActionValue);
+                    await supervisor.SendCommandAsync(task.ActionValue);
                     break;
                 case TaskActionType.BroadcastMessage:
-                    await _supervisor.SendCommandAsync($"say {task.ActionValue}");
+                    await supervisor.SendCommandAsync($"say {task.ActionValue}");
                     break;
                 case TaskActionType.RestartServer:
-                    await _supervisor.RestartAsync();
+                    await supervisor.RestartAsync();
                     break;
                 case TaskActionType.RunBackup:
                     if (!Guid.TryParse(task.ActionValue, out var jobId))
@@ -248,7 +301,9 @@ public sealed class SchedulerService : BackgroundService
 
     public override void Dispose()
     {
-        _supervisor.GameEvent -= OnGameEvent;
+        _registry.SupervisorCreated -= SubscribeTo;
+        foreach (var supervisor in _registry.All())
+            supervisor.GameEvent -= OnGameEvent;
         base.Dispose();
     }
 }

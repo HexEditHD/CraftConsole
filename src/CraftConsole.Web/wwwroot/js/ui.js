@@ -1,4 +1,6 @@
-// Tiny DOM + UI helpers: element builder, toasts, modals, formatters.
+// DOM + UI helpers for CYANOTYPE.
+// h() is a plain DOM builder, not a design decision, so it keeps its
+// shape; everything it renders below is new.
 import { icon } from './icons.js';
 
 /** h('div', {class:'x', onclick:fn, dataset:{id:1}}, child1, 'text', …) */
@@ -21,16 +23,30 @@ export function h(tag, props = {}, ...children) {
 }
 
 // ── Toasts ──────────────────────────────────────────────────────────────
-export function toast(message, kind = 'ok', ms = 3200) {
+export function toast(message, kind = 'ok', ms = 2600) {
   const root = document.getElementById('toasts');
   const el = h('div', { class: `toast ${kind}` },
-    icon(kind === 'err' ? 'alert' : 'check'),
+    icon(kind === 'err' ? 'warning' : 'check'),
     h('span', {}, message));
   root.append(el);
   setTimeout(() => {
     el.classList.add('leaving');
-    setTimeout(() => el.remove(), 220);
+    setTimeout(() => el.remove(), 140);
   }, ms);
+}
+
+// ── Empty states ────────────────────────────────────────────────────────
+/** Bare empty block (no card wrapper) — for use inside an existing card. */
+export function emptyBlock(iconName, title, sub) {
+  return h('div', { class: 'empty' },
+    icon(iconName),
+    title ? h('div', { class: 'empty-title' }, title) : null,
+    sub ? h('div', { class: 'empty-sub' }, sub) : null);
+}
+
+/** Empty state wrapped in its own card. */
+export function emptyState(iconName, title, sub) {
+  return h('div', { class: 'card' }, emptyBlock(iconName, title, sub));
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────
@@ -79,7 +95,7 @@ export function confirmDialog(title, message, { danger = false, okLabel = 'Confi
   return new Promise(resolve => {
     modal({
       title,
-      body: h('p', { class: 'text-2' }, message),
+      body: h('p', { class: 'dim' }, message),
       onClose: () => resolve(false),
       actions: [
         { label: 'Cancel', kind: 'ghost', onClick: () => resolve(false) },

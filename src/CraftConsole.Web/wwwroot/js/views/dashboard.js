@@ -1,189 +1,170 @@
-// Dashboard: status hero, live stat tiles with sparklines, machine gauges,
-// recent issues.
-import { h, icon, fmtUptime, timeAgo } from '../ui.js';
+// Health — stat tiles, machine gauges, recent issues.
+import { h, icon, fmtUptime, timeAgo, emptyBlock } from '../ui.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
-import { sparkline, gauge, thresholdColor } from '../charts.js';
+import { gauge, thresholdColor } from '../charts.js';
+
+const PEAK_WINDOW = 20; // ~40s at the sampler's ~2s interval
 
 /** Placeholder for a metric this platform cannot report (e.g. machine CPU off Windows/Linux). */
 function unavailableGauge(label) {
   return h('div', { class: 'gauge-box' },
-    h('div', {
-      style: {
-        width: '118px', height: '118px', borderRadius: '50%',
-        border: '2px dashed var(--border-strong)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: 'var(--text-3)', fontSize: '11.5px', textAlign: 'center', padding: '0 14px',
-      },
-    }, 'Not available'),
-    h('div', { class: 'gauge-caption' }, label));
+    h('div', { class: 'gauge-na' }, 'Not available'),
+    h('div', { class: 'gauge-cap' }, label));
+}
+
+function tile(iconName, label) {
+  const value = h('div', { class: 'tile-value' }, '—');
+  const sub = h('div', { class: 'tile-sub' }, '');
+  const fill = h('div', { style: { width: '0%' } });
+  const el = h('div', { class: 'card tile' },
+    h('div', { class: 'tile-label' }, icon(iconName), label),
+    value, sub,
+    h('div', { class: 'bar' }, fill));
+  return { el, value, sub, fill };
 }
 
 export default {
   id: 'dashboard',
-  title: 'Dashboard',
-  icon: 'gauge',
+  title: 'Health',
+  subtitle: 'Process and machine vitals',
+  icon: 'pulse',
 
   render(el) {
-    let els = {};
+    const status  = tile('drives', 'Status');
+    const players = tile('users', 'Players');
+    const cpu     = tile('bolt', 'Server CPU');
+    const mem     = tile('memory', 'Server memory');
 
-    const build = () => {
-      el.innerHTML = '';
-      els = {};
+    const gauges = h('div', { class: 'gauges' });
+    const issues = h('div', {});
 
-      // ── Hero stat tiles ──────────────────────────────────────────────
-      els.statusValue = h('div', { class: 'stat-value' }, '—');
-      els.statusSub = h('div', { class: 'stat-sub' }, '');
-      els.playersValue = h('div', { class: 'stat-value' }, '0');
-      els.playersSub = h('div', { class: 'stat-sub' }, '');
-      els.cpuValue = h('div', { class: 'stat-value' }, '—');
-      els.cpuSpark = h('div', { class: 'stat-spark' });
-      els.ramValue = h('div', { class: 'stat-value' }, '—');
-      els.ramSpark = h('div', { class: 'stat-spark' });
-      els.ramMeter = h('div', { class: 'meter' }, h('div'));
-
-      const hero = h('div', { class: 'dash-hero' },
-        h('div', { class: 'card stat-tile' },
-          h('div', { class: 'stat-label' }, icon('server'), 'Server'),
-          els.statusValue, els.statusSub),
-        h('div', { class: 'card stat-tile' },
-          h('div', { class: 'stat-label' }, icon('users'), 'Players online'),
-          els.playersValue, els.playersSub),
-        h('div', { class: 'card stat-tile' },
-          h('div', { class: 'stat-label' }, icon('zap'), 'Server CPU'),
-          els.cpuValue, els.cpuSpark),
-        h('div', { class: 'card stat-tile' },
-          h('div', { class: 'stat-label' }, icon('box'), 'Server memory'),
-          els.ramValue, els.ramMeter, els.ramSpark));
-
-      // ── Machine gauges + issues ──────────────────────────────────────
-      els.gauges = h('div', { class: 'gauge-pair' });
-      els.issueList = h('div');
-
-      const row = h('div', { class: 'dash-row' },
-        h('div', { class: 'card' },
-          h('div', { class: 'card-title' }, 'This machine'),
-          els.gauges),
+    el.append(h('div', { class: 'stack' },
+      h('div', { class: 'tiles' }, status.el, players.el, cpu.el, mem.el),
+      h('div', { class: 'pair' },
+        h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'This machine'), gauges),
         h('div', { class: 'card' },
           h('div', { class: 'card-title' },
             'Recent issues',
             h('span', { class: 'spacer' }),
             h('a', { href: '#/issues', class: 'small' }, 'View all')),
-          els.issueList));
+          issues))));
 
-      el.append(h('div', { class: 'dash' }, hero, row));
-      syncStatus();
-      syncMetrics();
-      syncIssues();
-    };
-
-    const syncStatus = () => {
+    function syncStatus() {
       const s = state.status;
-      const status = s?.status ?? 'Stopped';
-      els.statusValue.textContent = status;
-      els.statusValue.style.color =
-        status === 'Running' ? 'var(--accent)'
-        : status === 'Crashed' ? 'var(--danger)'
-        : status === 'Stopped' ? 'var(--text-2)' : 'var(--warn)';
+      const st = s?.status ?? 'Stopped';
+      const colour =
+        st === 'Running' ? 'var(--good)'
+        : st === 'Crashed' ? 'var(--bad)'
+        : st === 'Stopped' ? 'var(--ink-mid)' : 'var(--warn)';
+      status.value.textContent = st;
+      status.value.style.color = colour;
+      status.fill.style.width = '100%';
+      status.fill.style.background = colour;
 
       const bits = [];
       if (s?.version) bits.push(`v${s.version}`);
-      // RCON has no real "since when" to report — the panel only knows when it
-      // connected, not when the remote server actually started.
-      if (status === 'Running' && (s?.capabilities?.hasUptime ?? true)) bits.push(`up ${fmtUptime(s.uptimeSeconds)}`);
+      // RCON has no real "since when" — the panel only knows when it connected.
+      if (st === 'Running' && (s?.capabilities?.hasUptime ?? true)) bits.push(`up ${fmtUptime(s.uptimeSeconds)}`);
       if (s?.profile?.name) bits.push(s.profile.name);
-      els.statusSub.textContent = bits.join(' · ') || 'No profile started yet';
+      status.sub.textContent = bits.join(' · ') || 'No profile started yet';
 
-      els.playersValue.innerHTML = '';
-      els.playersValue.append(
-        String(state.players.length),
-        h('span', { class: 'unit' }, `/ ${s?.maxPlayers ?? 20}`));
-      els.playersSub.textContent = state.players.slice(0, 4).map(p => p.username).join(', ')
-        || (status === 'Running' ? 'Nobody online' : '');
-    };
+      const max = s?.maxPlayers ?? 20;
+      players.value.replaceChildren(String(state.players.length), h('span', { class: 'unit' }, `/ ${max}`));
+      players.sub.textContent = state.players.slice(0, 4).map(p => p.username).join(', ')
+        || (st === 'Running' ? 'Nobody online' : '');
+      players.fill.style.width = `${max > 0 ? Math.min(state.players.length / max * 100, 100) : 0}%`;
+      // --blue is this sheet's grease-pencil amber; players online is live state.
+      players.fill.style.background = 'var(--blue)';
+    }
 
-    const syncMetrics = () => {
+    function syncMetrics() {
       const m = state.metrics;
       const hist = state.metricsHistory;
 
-      // Server process tiles. null means no local process to sample — the
-      // server hasn't started yet, or this is an RCON connection, which never
-      // has one. Show that plainly rather than drawing an idle 0% server.
-      const cpu = m?.serverCpuPercent;
-      els.cpuValue.innerHTML = '';
-      if (cpu == null) {
-        els.cpuValue.title = 'No server process running.';
-        els.cpuValue.append('—');
+      // null means no local process to sample — not started, or RCON, which
+      // never has one. Show that plainly rather than an idle-looking 0.
+      const c = m?.serverCpuPercent;
+      cpu.fill.style.width = '0%';
+      if (c == null) {
+        cpu.value.replaceChildren('—');
+        cpu.value.style.color = '';
+        cpu.value.title = 'No server process running.';
+        cpu.sub.textContent = '';
       } else {
-        els.cpuValue.title = '';
-        els.cpuValue.append(cpu.toFixed(0), h('span', { class: 'unit' }, '%'));
+        cpu.value.replaceChildren(c.toFixed(0), h('span', { class: 'unit' }, '%'));
+        cpu.value.style.color = thresholdColor(c);
+        cpu.value.title = '';
+        const peak = Math.max(c, ...hist.slice(-PEAK_WINDOW).map(x => x.serverCpuPercent ?? 0));
+        cpu.sub.textContent = `peak ${peak.toFixed(0)}% in last 40s`;
+        cpu.fill.style.width = `${Math.min(c, 100)}%`;
+        cpu.fill.style.background = thresholdColor(c);
       }
-      els.cpuSpark.innerHTML = '';
-      if (cpu != null) els.cpuSpark.append(sparkline(hist.map(x => x.serverCpuPercent ?? 0), { max: 100 }));
 
       const ram = m?.serverRamMb;
       const ramMax = m?.serverRamMaxMb || 0;
-      els.ramValue.innerHTML = '';
-      els.ramMeter.style.display = ram == null ? 'none' : '';
+      mem.fill.style.width = '0%';
       if (ram == null) {
-        els.ramValue.title = 'No server process running.';
-        els.ramValue.append('—');
+        mem.value.replaceChildren('—');
+        mem.value.style.color = '';
+        mem.value.title = 'No server process running.';
+        mem.sub.textContent = '';
       } else {
-        els.ramValue.title = '';
-        els.ramValue.append(
-          ram >= 1024 ? (ram / 1024).toFixed(1) : String(Math.round(ram)),
-          h('span', { class: 'unit' }, ram >= 1024 ? 'GB' : 'MB'));
+        mem.value.title = '';
+        const shown = (ram / 1024).toFixed(1);
         if (ramMax > 0) {
           const pct = Math.min(ram / ramMax * 100, 100);
-          els.ramMeter.className = `meter ${pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : ''}`;
-          els.ramMeter.firstChild.style.width = `${pct}%`;
-          els.ramValue.append(h('span', { class: 'unit' }, ` / ${(ramMax / 1024).toFixed(1)} GB`));
+          mem.value.replaceChildren(shown, h('span', { class: 'unit' }, `/ ${(ramMax / 1024).toFixed(1)} GB`));
+          mem.value.style.color = thresholdColor(pct);
+          mem.fill.style.width = `${pct}%`;
+          mem.fill.style.background = thresholdColor(pct);
+        } else {
+          mem.value.replaceChildren(shown, h('span', { class: 'unit' }, 'GB'));
+          mem.value.style.color = '';
         }
+        mem.sub.textContent = `${Math.round(ram)} MB resident`;
       }
-      els.ramSpark.innerHTML = '';
-      if (ram != null) els.ramSpark.append(sparkline(hist.map(x => x.serverRamMb ?? 0), { max: ramMax || null }));
 
-      // Machine gauges. null means the platform can't report the figure — show it
-      // as unavailable rather than as a gauge pinned at zero, which reads as idle.
-      els.gauges.innerHTML = '';
+      // null means the platform can't report the figure — show it as
+      // unavailable rather than a gauge pinned at zero, which reads as idle.
+      gauges.innerHTML = '';
       const cpuPct = m?.machineCpuPercent;
       const ramPct = m?.machineRamPercent;
 
-      els.gauges.append(
+      gauges.append(
         cpuPct == null
           ? unavailableGauge('CPU')
           : h('div', { class: 'gauge-box' },
               gauge(cpuPct, { label: 'CPU' }),
-              h('div', { class: 'gauge-detail', style: { color: thresholdColor(cpuPct) } },
-                `${cpuPct.toFixed(0)}% in use`)),
+              h('div', { class: 'gauge-cap', style: { color: thresholdColor(cpuPct) } }, `${cpuPct.toFixed(0)}% in use`)),
         ramPct == null
           ? unavailableGauge('Memory')
           : h('div', { class: 'gauge-box' },
               gauge(ramPct, { label: 'Memory' }),
-              h('div', { class: 'gauge-detail' },
+              h('div', { class: 'gauge-cap' },
                 m.machineRamUsedGb != null && m.machineRamTotalGb != null
                   ? `${m.machineRamUsedGb.toFixed(1)} / ${m.machineRamTotalGb.toFixed(1)} GB`
                   : '—')));
-    };
+    }
 
-    const syncIssues = () => {
-      els.issueList.innerHTML = '';
-      const recent = state.issues.slice(-8).reverse();
+    function syncIssues() {
+      issues.innerHTML = '';
+      const recent = state.issues.slice(-3).reverse();
       if (!recent.length) {
-        els.issueList.append(h('div', { class: 'empty', style: { padding: '22px' } },
-          icon('check'),
-          h('div', { class: 'empty-sub' }, 'No warnings or errors detected.')));
+        issues.append(emptyBlock('check', null, 'No warnings or errors detected.'));
         return;
       }
-      for (const issue of recent) {
-        els.issueList.append(h('div', { class: 'issue-row' },
-          h('span', { class: `badge ${issue.type === 'Severe' ? 'danger' : 'warn'}` }, issue.type),
-          h('span', { class: 'issue-msg', title: issue.message }, issue.message),
-          h('time', {}, timeAgo(issue.timestamp))));
+      for (const i of recent) {
+        issues.append(h('div', { class: 'issue-row' },
+          h('span', { class: `tag ${i.type === 'Severe' ? 'bad' : 'warn'}` }, i.type),
+          h('span', { class: 'msg', title: i.message }, i.message),
+          h('time', {}, timeAgo(i.timestamp))));
       }
-    };
+    }
 
-    build();
+    syncStatus();
+    syncMetrics();
+    syncIssues();
 
     const offs = [
       on('store:status', syncStatus),

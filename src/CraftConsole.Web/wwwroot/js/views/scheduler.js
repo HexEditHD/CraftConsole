@@ -57,7 +57,8 @@ function unsupportedReason(value, kind) {
 
 export default {
   id: 'scheduler',
-  title: 'Scheduler',
+  title: 'Tasks',
+  subtitle: 'Scheduled triggers and actions',
   icon: 'clock',
 
   render(el) {
@@ -102,16 +103,17 @@ export default {
               h('label', { class: 'switch', title: task.isEnabled ? 'Enabled' : 'Disabled' },
                 h('input', {
                   type: 'checkbox', checked: task.isEnabled,
+                  role: 'switch', 'aria-checked': String(task.isEnabled),
                   'aria-label': `${task.isEnabled ? 'Disable' : 'Enable'} “${task.name}”`,
                   onchange: e => toggle(task, e.target.checked),
                 }),
                 h('span', { class: 'track' }))),
             h('td', { style: { fontWeight: 600 } }, task.name,
-              task.isEnabled ? null : h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Disabled')),
-            h('td', {}, h('span', { class: 'badge info' }, triggerLabel(task)),
-              triggerWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
-            h('td', { class: 'mono small text-2' }, actionLabel(task, backupJobs),
-              actionWarn ? h('span', { class: 'badge warn', style: { marginLeft: '6px' }, title: actionWarn }, '!') : null),
+              task.isEnabled ? null : h('span', { class: 'tag warn', style: { marginLeft: '6px' } }, 'Disabled')),
+            h('td', {}, h('span', { class: 'tag' }, triggerLabel(task)),
+              triggerWarn ? h('span', { class: 'tag warn', style: { marginLeft: '6px' }, title: triggerWarn }, '!') : null),
+            h('td', { class: 'mono small dim' }, actionLabel(task, backupJobs),
+              actionWarn ? h('span', { class: 'tag warn', style: { marginLeft: '6px' }, title: actionWarn }, '!') : null),
             h('td', {}, h('div', { class: 'actions' },
               h('button', {
                 class: 'btn sm', title: 'Run once now',
@@ -120,9 +122,9 @@ export default {
                   catch (err) { toast(err.message, 'err'); }
                 },
               }, icon('play'), 'Run'),
-              h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openEditor(task) }, icon('pencil')),
+              h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${task.name}”`, onclick: () => openEditor(task) }, icon('pencil')),
               h('button', {
-                class: 'btn sm icon-only danger', title: 'Delete',
+                class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${task.name}”`,
                 onclick: async () => {
                   if (!await confirmDialog('Delete task', `Delete “${task.name}”?`, { danger: true, okLabel: 'Delete' })) return;
                   await api.del(`/api/tasks/${task.id}`);
@@ -204,8 +206,8 @@ export default {
                 isEnabled: task?.isEnabled ?? true,
               };
               const req = isNew ? api.post('/api/tasks', body) : api.put(`/api/tasks/${task.id}`, body);
-              req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
-                 .catch(err => toast(err.message, 'err'));
+              return req.then(() => toast(isNew ? 'Task created' : 'Task saved'))
+                 .catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],

@@ -13,6 +13,8 @@ public static class SetupApi
     public record SettingsDto(
         bool ShowTimestamp, bool ShowDate, bool AutoScrollConsole, int MaxConsoleLines,
         string ColorInfo, string ColorWarn, string ColorError, string ColorPlayer);
+    public record BrowseEntryDto(string Name, string Path);
+    public record BrowseFileDto(string Name, string Path, long Size);
 
     public static void MapSetupApi(this IEndpointRouteBuilder app)
     {
@@ -51,16 +53,25 @@ public static class SetupApi
             catch (InvalidOperationException ex) { return Results.BadRequest(new { ex.Message }); }
         }).RequireRole(Role.Admin);
 
-        app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles) =>
-            await profiles.DeleteAsync(id) ? Results.NoContent() : Results.NotFound())
-            .RequireRole(Role.Admin);
+        app.MapDelete("/api/profiles/{id:guid}", async (Guid id, ProfilesService profiles, ServerRegistry registry) =>
+        {
+            if (!await profiles.DeleteAsync(id)) return Results.NotFound();
+            // Stops it first if running, then drops its supervisor — a deleted
+            // profile's server has nothing left to track it by.
+            await registry.RemoveAsync(id);
+            return Results.NoContent();
+        }).RequireRole(Role.Admin);
 
+        // Operator, not Admin: this now doubles as "switch what the shell's
+        // server switcher is looking at" (see the title-block switcher in
+        // main.js), and viewing a different server is not a privileged action
+        // — an Operator can already see the active one's console/players/issues.
         app.MapPost("/api/profiles/{id:guid}/activate", async (Guid id, ProfilesService profiles) =>
         {
             if (await profiles.GetAsync(id) is null) return Results.NotFound();
             await profiles.SetActiveAsync(id);
             return Results.NoContent();
-        }).RequireRole(Role.Admin);
+        }).RequireRole(Role.Operator);
 
         // Write-only: sets or replaces the password, never returns it. GET
         // /api/profiles exposes only whether one is set (HasRconPassword above).
@@ -128,11 +139,122 @@ public static class SetupApi
             return Results.NoContent();
         }).RequireRole(Role.Admin);
 
-        // ── Settings ──────────────────────────────────────────────────────
-        app.MapGet("/api/settings", (SettingsHolder settings) =>
-            Results.Json(settings.Current, Json.Options)).RequireRole(Role.Admin);
+        // ── Folder picker ─────────────────────────────────────────────────
+        // Backs the destination-folder picker on server/backup setup forms.
+        // Not jailed to a profile directory — Admins can already point those
+        // forms at any path on disk by typing it, so this is a UX convenience
+        // over an already-trusted capability, not a new one. Read-only:
+        // it only lists directory names, never file contents.
+        // files=true adds the folder's files to the response; ext is an optional
+        // comma-separated allow-list (".jar"). Both default off, so the
+        // folder-only callers that predate this keep their existing payload.
+        app.MapGet("/api/setup/browse", (string? path, bool? files, string? ext) =>
+        {
+            var wantFiles = files == true;
+            var allowed = (ext ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(e => e.StartsWith('.') ? e : "." + e)
+                .ToArray();
 
-        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings) =>
+            IResult DriveList()
+            {
+                var drives = DriveInfo.GetDrives()
+                    .Where(d => { try { return d.IsReady; } catch { return false; } })
+                    .Select(d => new BrowseEntryDto(d.Name.TrimEnd('\\'), d.Name))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                // A drive list has no files, but the shape stays consistent so the
+                // client never has to special-case it.
+                return wantFiles
+                    ? Results.Json(new { Path = "", Parent = (string?)null, Directories = drives, Files = new List<BrowseFileDto>() }, Json.Options)
+                    : Results.Json(new { Path = "", Parent = (string?)null, Directories = drives }, Json.Options);
+            }
+
+            // No path means: show the drive list on Windows, or "/" on Unix
+            // (which has no separate drive-list concept).
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                if (OperatingSystem.IsWindows()) return DriveList();
+                path = "/";
+            }
+
+            string fullPath;
+            try { fullPath = Path.GetFullPath(path); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return Results.BadRequest(new { Message = "Invalid path." });
+            }
+
+            // The requested path may not exist yet — it can be a suggested
+            // default that was never created, or a destination the user is
+            // about to create. Walk up to the nearest real ancestor instead
+            // of dead-ending; fall back to the drive list / "/" if nothing
+            // on that branch exists at all.
+            while (!Directory.Exists(fullPath))
+            {
+                var up = Path.GetDirectoryName(fullPath);
+                if (string.IsNullOrEmpty(up) || up == fullPath)
+                    return OperatingSystem.IsWindows() ? DriveList() : Results.BadRequest(new { Message = "That folder doesn't exist." });
+                fullPath = up;
+            }
+
+            List<BrowseEntryDto> directories;
+            List<BrowseFileDto> fileList = [];
+            try
+            {
+                directories = Directory.GetDirectories(fullPath)
+                    .Select(d => new BrowseEntryDto(Path.GetFileName(d), d))
+                    .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (wantFiles)
+                {
+                    fileList = Directory.GetFiles(fullPath)
+                        .Where(f => allowed.Length == 0
+                            || allowed.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                        .Select(f =>
+                        {
+                            // A file can vanish between the listing and the stat,
+                            // and on Linux a broken symlink lists but cannot be
+                            // stat'ed. Neither should fail the whole request.
+                            long size;
+                            try { size = new FileInfo(f).Length; } catch { size = 0; }
+                            return new BrowseFileDto(Path.GetFileName(f), f, size);
+                        })
+                        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                return Results.Json(new { Message = "Access denied to this folder." }, Json.Options, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var atRoot = string.Equals(
+                fullPath.TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+            // At a drive root on Windows, "up" goes to the drive list (empty
+            // path); at "/" on Linux there's nowhere further up to go.
+            string? parent = atRoot
+                ? (OperatingSystem.IsWindows() ? "" : null)
+                : Path.GetDirectoryName(fullPath);
+
+            return wantFiles
+                ? Results.Json(new { Path = fullPath, Parent = parent, Directories = directories, Files = fileList }, Json.Options)
+                : Results.Json(new { Path = fullPath, Parent = parent, Directories = directories }, Json.Options);
+        }).RequireRole(Role.Admin);
+
+        // ── Settings ──────────────────────────────────────────────────────
+        // Projected rather than returning AppSettings wholesale: HasCurseForgeApiKey
+        // is computed (the key itself lives in CurseForgeSecretStore, encrypted,
+        // never serialized here), and AppSettings carries a few internal fields
+        // (ActiveProfileId, Theme, MinimizeToTray) nothing in the frontend reads
+        // from this endpoint.
+        app.MapGet("/api/settings", async (SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
+            Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options)).RequireRole(Role.Admin);
+
+        app.MapPut("/api/settings", async (SettingsDto dto, SettingsHolder settings, CurseForgeSecretStore curseForgeKey) =>
         {
             await settings.UpdateAsync(s =>
             {
@@ -145,7 +267,20 @@ public static class SetupApi
                 s.ColorError = dto.ColorError;
                 s.ColorPlayer = dto.ColorPlayer;
             });
-            return Results.Json(settings.Current, Json.Options);
+            return Results.Json(await SettingsSnapshot(settings, curseForgeKey), Json.Options);
         }).RequireRole(Role.Admin);
     }
+
+    private static async Task<object> SettingsSnapshot(SettingsHolder settings, CurseForgeSecretStore curseForgeKey) => new
+    {
+        settings.Current.ShowTimestamp,
+        settings.Current.ShowDate,
+        settings.Current.AutoScrollConsole,
+        settings.Current.MaxConsoleLines,
+        settings.Current.ColorInfo,
+        settings.Current.ColorWarn,
+        settings.Current.ColorError,
+        settings.Current.ColorPlayer,
+        HasCurseForgeApiKey = await curseForgeKey.HasAsync(),
+    };
 }

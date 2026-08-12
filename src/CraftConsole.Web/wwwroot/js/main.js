@@ -1,9 +1,12 @@
-// App shell: navigation, hash router, topbar status cluster, EULA banner.
+// App shell for CYANOTYPE: ruled sidebar, drawing title block carrying
+// the readings and server controls in its own cells, hash router.
 import { h, icon, toast } from './ui.js';
 import { api } from './api.js';
 import { connectSse, on } from './bus.js';
 import { state, initStore, isAdmin } from './store.js';
 import { createServerControls } from './components/server-controls.js';
+import { createVitals } from './components/vitals.js';
+import { createServerSwitch } from './components/server-switch.js';
 
 import dashboard from './views/dashboard.js';
 import consoleView from './views/console.js';
@@ -22,44 +25,95 @@ const ROUTES = [dashboard, consoleView, players, issues, server, plugins, editor
 // action on them would 403 for an Operator, so there's nothing useful to show.
 const ADMIN_ONLY_VIEWS = new Set(['server', 'plugins', 'editor', 'scheduler', 'settings']);
 
-let activeCleanup = null;
-let issueBadge = null;
+// Route ids stay as they always were (dashboard/scheduler/editor); only the
+// labels shown to the user differ (Health/Tasks/Files).
+const NAV_GROUPS = [
+  { label: 'Operate',   ids: ['console', 'dashboard', 'players', 'issues'] },
+  { label: 'Configure', ids: ['server', 'plugins', 'editor'] },
+  { label: 'Automate',  ids: ['backups', 'scheduler', 'settings'] },
+];
 
-// ── Navigation ──────────────────────────────────────────────────────────
+// The phone bar can't hold ten destinations. Admins get the canonical five;
+// an Operator would have two dead admin-only tabs there, so they get the
+// next-most-useful non-gated destinations instead.
+const PHONE_ADMIN    = ['console', 'dashboard', 'players', 'server', 'settings'];
+const PHONE_OPERATOR = ['console', 'dashboard', 'players', 'issues', 'backups'];
+
+let activeCleanup = null;
+let navBadges = [];
+let vitals, controls, serverSwitch;
+
+// ── Sidebar ─────────────────────────────────────────────────────────────
 function buildNav() {
   const nav = document.getElementById('nav');
   nav.innerHTML = '';
+  navBadges = [];
   const admin = isAdmin();
-  for (const route of ROUTES) {
-    if (ADMIN_ONLY_VIEWS.has(route.id) && !admin) continue;
 
+  for (const group of NAV_GROUPS) {
+    const routes = group.ids
+      .map(id => ROUTES.find(r => r.id === id))
+      .filter(r => r && (!ADMIN_ONLY_VIEWS.has(r.id) || admin));
+
+    if (!routes.length) continue; // Configure is entirely admin-only
+
+    nav.append(h('div', { class: 'nav-group-label' }, group.label));
+
+    for (const route of routes) {
+      const item = h('button', {
+        class: 'nav-item', id: `nav-${route.id}`,
+        onclick: () => { location.hash = `#/${route.id}`; },
+      }, icon(route.icon), h('span', {}, route.title));
+
+      if (route.id === 'issues') {
+        const badge = h('span', { class: 'count', style: { display: 'none' } }, '0');
+        navBadges.push(badge);
+        item.append(badge);
+      }
+      nav.append(item);
+    }
+  }
+}
+
+function buildPhoneNav() {
+  const nav = document.getElementById('mobile-nav');
+  nav.innerHTML = '';
+  const ids = isAdmin() ? PHONE_ADMIN : PHONE_OPERATOR;
+
+  for (const id of ids) {
+    const route = ROUTES.find(r => r.id === id);
+    if (!route) continue;
     const item = h('button', {
-      class: 'nav-item',
-      id: `nav-${route.id}`,
+      class: 'mnav-item', id: `mnav-${route.id}`,
       onclick: () => { location.hash = `#/${route.id}`; },
-    },
-      icon(route.icon),
-      h('span', { class: 'label' }, route.title));
+    }, icon(route.icon), h('span', { class: 'lbl' }, route.title));
 
     if (route.id === 'issues') {
-      issueBadge = h('span', { class: 'nav-badge', style: { display: 'none' } }, '0');
-      item.append(issueBadge);
+      const badge = h('span', { class: 'count', style: { display: 'none' } }, '0');
+      navBadges.push(badge);
+      item.append(badge);
     }
     nav.append(item);
   }
 }
 
-function updateIssueBadge() {
-  if (!issueBadge) return;
+function syncIssueBadges() {
   const count = state.issues.length;
-  issueBadge.textContent = count > 99 ? '99+' : String(count);
-  issueBadge.style.display = count > 0 ? '' : 'none';
+  const text = count > 99 ? '99+' : String(count);
+  for (const b of navBadges) {
+    b.textContent = text;
+    b.style.display = count > 0 ? '' : 'none';
+  }
 }
 
 // ── Router ──────────────────────────────────────────────────────────────
-function route() {
+function currentView() {
   const id = location.hash.replace(/^#\//, '') || 'dashboard';
-  let view = ROUTES.find(r => r.id === id) ?? ROUTES[0];
+  return ROUTES.find(r => r.id === id) ?? ROUTES[0];
+}
+
+function route() {
+  let view = currentView();
 
   if (ADMIN_ONLY_VIEWS.has(view.id) && !isAdmin()) {
     toast('That page needs an admin account.', 'err');
@@ -70,66 +124,80 @@ function route() {
   activeCleanup?.();
   activeCleanup = null;
 
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item, .mnav-item').forEach(el => el.classList.remove('active'));
   document.getElementById(`nav-${view.id}`)?.classList.add('active');
+  document.getElementById(`mnav-${view.id}`)?.classList.add('active');
+
   document.getElementById('page-title').textContent = view.title;
+  syncSubtitle(view);
 
   const outlet = document.getElementById('view');
   outlet.innerHTML = '';
   activeCleanup = view.render(outlet) ?? null;
+
+  // Restart the entrance animation on every route change — removing and
+  // re-adding with a reflow between restarts it even when the class didn't
+  // change from the previous route.
+  outlet.classList.remove('view-in');
+  void outlet.offsetWidth;
+  outlet.classList.add('view-in');
 }
 
-// ── Topbar cluster ──────────────────────────────────────────────────────
-let pill, playersChip, profileChip, controls;
+function syncSubtitle(view) {
+  const el = document.getElementById('page-sub');
+  el.textContent = typeof view.subtitle === 'function' ? view.subtitle() : (view.subtitle ?? '');
+}
 
+// ── Masthead ────────────────────────────────────────────────────────────
 function buildTopbar() {
-  const cluster = document.getElementById('topbar-cluster');
+  document.getElementById('brand-icon').append(icon('cube'));
 
-  profileChip = h('button', {
-    class: 'profile-chip',
-    title: 'Manage server profiles',
-    onclick: () => { location.hash = '#/server'; },
-  }, icon('server'), h('span', { class: 'name' }, 'No profile'));
+  serverSwitch = createServerSwitch();
+  document.getElementById('server-switch').replaceWith(serverSwitch.el);
+  serverSwitch.el.id = 'server-switch';
 
-  pill = h('span', { class: 'status-pill stopped' }, 'Stopped');
-
-  playersChip = h('span', { class: 'badge', title: 'Players online' }, '0 online');
+  vitals = createVitals();
+  document.getElementById('readings').replaceWith(vitals.el);
+  vitals.el.id = 'readings';
 
   controls = createServerControls();
+  document.getElementById('controls').replaceWith(controls.el);
+  controls.el.id = 'controls';
 
-  cluster.append(
-    h('div', { class: 'topbar-group' }, profileChip, pill, playersChip),
-    h('span', { class: 'topbar-divider' }),
-    h('div', { class: 'topbar-group' }, controls.el));
-  syncTopbar();
+  syncShell();
 }
 
-function syncTopbar() {
-  const s = state.status;
-  const status = s?.status ?? 'Stopped';
+function syncShell() {
+  serverSwitch?.sync();
+  vitals?.sync();
+  controls?.sync();
+  syncIssueBadges();
+  syncEulaBanner(state.status?.eulaRequired === true);
+  syncSubtitle(currentView());
+}
 
-  pill.className = `status-pill ${status.toLowerCase()}`;
-  pill.textContent = status;
-
-  playersChip.textContent = `${state.players.length} online`;
-
-  profileChip.querySelector('span.name').textContent = s?.profile?.name ?? 'No profile';
-
-  controls.sync();
-
-  syncEulaBanner(s?.eulaRequired === true);
+// ── Server context switch ──────────────────────────────────────────────
+// store.js has already re-hydrated state for the newly current server by the
+// time this fires; a full re-render is the simplest way to guarantee every
+// view drops whatever it had for the old one rather than trying to patch
+// each view's internal state individually.
+function onServerSwitched() {
+  route();
+  syncShell();
 }
 
 // ── EULA banner ─────────────────────────────────────────────────────────
+let eulaDismissed = false;
+
 function syncEulaBanner(required) {
   const slot = document.getElementById('banner-slot');
   const existing = slot.querySelector('.banner');
-  if (!required) { existing?.remove(); return; }
-  if (existing) return;
+  if (!required) { eulaDismissed = false; existing?.remove(); return; }
+  if (existing || eulaDismissed) return;
 
   slot.append(h('div', { class: 'banner' },
-    icon('alert'),
-    h('span', {}, 'Mojang requires accepting the Minecraft EULA before the server can run.'),
+    icon('warning'),
+    h('span', {}, 'Mojang requires accepting the Minecraft EULA before this server can run.'),
     h('span', { class: 'spacer' }),
     h('button', {
       class: 'btn sm primary',
@@ -140,52 +208,50 @@ function syncEulaBanner(required) {
           toast('EULA accepted — start the server again.');
         } catch (err) { toast(err.message, 'err'); this.disabled = false; }
       },
-    }, 'Accept EULA')));
+    }, 'Accept EULA'),
+    h('button', {
+      class: 'btn sm ghost',
+      onclick: () => { eulaDismissed = true; slot.querySelector('.banner')?.remove(); },
+    }, 'Later')));
 }
 
-// ── Connection indicator ────────────────────────────────────────────────
+// ── Connection ──────────────────────────────────────────────────────────
 function syncConn() {
-  const dot = document.getElementById('conn-dot');
+  const dot = document.getElementById('conn');
   const label = document.getElementById('conn-label');
-  dot.className = `conn-dot ${state.connected ? 'ok' : 'bad'}`;
+  dot.className = `conn ${state.connected ? 'ok' : 'bad'}`;
   dot.title = state.connected ? 'Live connection to CraftConsole' : 'Reconnecting…';
   label.textContent = state.connected ? 'Live' : 'Reconnecting…';
 }
 
-// ── Logout ──────────────────────────────────────────────────────────────
-function buildLogout() {
-  const foot = document.querySelector('.sidebar-foot');
-
-  if (state.session) {
-    foot.append(h('span', {
-      class: 'whoami', style: { marginLeft: 'auto' },
-      title: `Signed in as ${state.session.username} (${state.session.role})`,
-    }, `${state.session.username} · ${state.session.role}`));
-  }
-
-  foot.append(
-    h('button', {
-      class: 'btn ghost sm icon-only', title: 'Sign out',
-      style: { marginLeft: state.session ? '' : 'auto' },
-      onclick: async () => {
-        try { await api.post('/api/auth/logout'); } catch { /* clearing the cookie server-side is best-effort */ }
-        location.reload();
-      },
-    }, icon('power')));
+// ── Sign out ────────────────────────────────────────────────────────────
+function buildSignOut() {
+  const btn = document.getElementById('signout');
+  btn.append(icon('power'));
+  if (state.session) btn.title = `Signed in as ${state.session.username} (${state.session.role}) — click to sign out`;
+  btn.addEventListener('click', async () => {
+    try { await api.post('/api/auth/logout'); } catch { /* clearing the cookie server-side is best-effort */ }
+    location.reload();
+  });
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────
 (async function boot() {
   await initStore();
   buildNav();
+  buildPhoneNav();
   buildTopbar();
-  buildLogout();
-  updateIssueBadge();
+  buildSignOut();
+  syncIssueBadges();
+  syncConn();
 
-  on('store:status', syncTopbar);
-  on('store:players', syncTopbar);
-  on('store:issues', updateIssueBadge);
+  on('store:status', syncShell);
+  on('store:players', syncShell);
+  on('store:metrics', () => vitals?.sync());
+  on('store:issues', syncIssueBadges);
   on('store:conn', syncConn);
+  on('store:servers', () => serverSwitch?.sync());
+  on('store:switched', onServerSwitched);
 
   connectSse();
 

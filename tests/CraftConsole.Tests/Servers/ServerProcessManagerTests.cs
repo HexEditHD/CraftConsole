@@ -57,6 +57,31 @@ public class ServerProcessManagerTests
         await run.WaitForConsoleAsync("<Steve> hello world");
     }
 
+    // ── Regression: embedded line breaks split into multiple commands ──────
+
+    [Theory]
+    [InlineData("fake join\nfake leave")]
+    [InlineData("fake join\rfake leave")]
+    public async Task SendCommandAsync_does_not_deliver_a_command_containing_an_embedded_line_break(string command)
+    {
+        // The fake server reads stdin with Console.ReadLine(), exactly like a
+        // real Minecraft console — a bare \r is a line terminator too, same as
+        // \n. Without the guard this reaches the process as two commands, so
+        // "fake join" and "fake leave" would each surface on their own line.
+        await using var run = new FakeServerRun();
+        await run.Manager.StartAsync();
+        await run.WaitForStatusAsync(ServerStatus.Running);
+
+        await run.Manager.SendCommandAsync(command);
+
+        // There is no positive signal for "nothing arrived" — give the fake
+        // server a beat to process anything that might have reached its stdin.
+        await Task.Delay(500);
+
+        Assert.DoesNotContain(run.Messages, m => m.Contains("Steve joined the game"));
+        Assert.DoesNotContain(run.Messages, m => m.Contains("Steve left the game"));
+    }
+
     // ── Regression: stop had no timeout or kill fallback ──────────────────
 
     [Fact]

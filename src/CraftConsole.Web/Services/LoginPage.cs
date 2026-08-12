@@ -40,33 +40,52 @@ public static class LoginPage
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>CraftConsole — {{title}}</title>
         <style>
-          :root { --bg:#0B0E14; --surface:#11151D; --border:#232A38;
-                  --text:#E8ECF4; --text-2:#9AA5B8; --text-3:#667084;
-                  --accent:#34D399; --accent-strong:#10B981; --danger:#F87171; --danger-dim:rgba(248,113,113,.12); }
+          @font-face { font-family:'JBMono'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/jbmono-400.woff2') format('woff2'); }
+          @font-face { font-family:'JBMono'; font-style:normal; font-weight:700; font-display:swap; src:url('/fonts/jbmono-700.woff2') format('woff2'); }
+          @font-face { font-family:'Plex'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/plex-400.woff2') format('woff2'); }
+          :root { --sheet:#0a1e33; --sheet-2:#0d2740; --sheet-3:#12304c;
+                  --n-200:#1d3f5e; --n-300:#2c5478; --n-500:#7396b4; --n-600:#9db9d1; --n-800:#d8e6f2; --n-900:#ecf4fb;
+                  --blue:#ffb000; --blue-wash:#3a2a06; --grid:#16395c; --bad:#ff6f61; }
           * { box-sizing:border-box; }
-          html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
-                      font-family:'Segoe UI Variable Text','Segoe UI',system-ui,-apple-system,sans-serif; }
-          body { display:flex; align-items:center; justify-content:center; padding:20px; }
-          .card { width:100%; max-width:340px; background:var(--surface); border:1px solid var(--border);
-                  border-radius:14px; padding:28px; box-shadow:0 8px 30px rgba(0,0,0,.35); }
-          .brand { display:flex; align-items:center; gap:11px; margin-bottom:22px; }
-          .mark { width:34px; height:34px; border-radius:9px; flex-shrink:0;
-                  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,.28), transparent 42%),
-                              linear-gradient(180deg, #10B981 0%, #10B981 52%, #065F46 52%); }
-          h1 { font-size:15px; margin:0; font-weight:650; }
-          p.sub { margin:2px 0 0; font-size:12px; color:var(--text-3); }
-          label { display:block; font-size:12px; font-weight:600; color:var(--text-2); margin:14px 0 5px; }
-          input { width:100%; padding:9px 11px; background:var(--bg); border:1px solid var(--border);
-                  border-radius:8px; color:var(--text); font-size:13.5px; }
-          input:focus { outline:none; border-color:var(--accent-strong); }
-          button { width:100%; margin-top:18px; padding:10px; border:none; border-radius:8px;
-                   background:var(--accent-strong); color:#06281C; font-weight:600; font-size:13.5px; cursor:pointer; }
-          button:hover { background:var(--accent); }
-          button:disabled { opacity:.6; cursor:not-allowed; }
-          .err { display:none; margin-top:12px; padding:9px 11px; background:var(--danger-dim);
-                 border:1px solid rgba(248,113,113,.35); border-radius:8px; color:var(--danger); font-size:12.5px; }
-          .hint { margin-top:12px; font-size:11.5px; color:var(--text-3); line-height:1.5; }
-          .hint code { color:var(--text-2); }
+          html,body { margin:0; height:100%; background:var(--sheet); color:var(--n-900);
+                      font-family:'JBMono',ui-monospace,Consolas,monospace;
+                      -webkit-font-smoothing:antialiased; }
+          /* The sheet itself: the same ruled grid the panel draws on. */
+          body { display:flex; align-items:center; justify-content:center; padding:20px;
+                 background-image:linear-gradient(to right, var(--grid) 1px, transparent 1px),
+                                  linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+                 background-size:16px 16px; }
+          ::selection { background: var(--blue-wash); color: var(--n-900); }
+          :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+          /* Corner ticks mark the card as a drawn part, matching the panel. */
+          .card { position:relative; width:100%; max-width:344px; background:var(--sheet);
+                  border:1px solid var(--n-200); border-radius:2px; padding:28px 26px; }
+          .card::before, .card::after { content:''; position:absolute; width:7px; height:7px;
+                                        border-color:var(--n-300); border-style:solid; }
+          .card::before { top:-1px; left:-1px; border-width:1px 0 0 1px; }
+          .card::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; }
+          .brand { display:flex; align-items:center; gap:10px; margin-bottom:24px; }
+          /* Isometric cube, like a part in an exploded view. */
+          .mark { width:26px; height:26px; flex-shrink:0;
+                  background:no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffb000' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z'/%3E%3Cpath d='M12 12 20.5 7.25'/%3E%3Cpath d='M12 12 3.5 7.25'/%3E%3Cpath d='M12 12v9.5'/%3E%3C/svg%3E"); }
+          h1 { font-size:14px; margin:0; font-weight:600; letter-spacing:-.02em; }
+          /* Prose sets in Plex; everything structural stays mono. */
+          p.sub { margin:2px 0 0; font-size:12px; color:var(--n-500); font-family:'Plex',system-ui,sans-serif; }
+          label { display:block; font-family:'JBMono',ui-monospace,monospace; font-size:10.5px;
+                  letter-spacing:.1em; text-transform:uppercase; color:var(--n-500); margin:16px 0 4px; }
+          input { width:100%; padding:6px 9px; background:var(--sheet); border:1px solid var(--n-200);
+                  border-radius:2px; color:var(--n-900); font-family:'JBMono',ui-monospace,monospace;
+                  font-size:12.5px; transition:border-color .12s, box-shadow .12s; }
+          input:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-wash); }
+          button { width:100%; margin-top:22px; padding:8px; border:1px solid var(--n-900); border-radius:2px;
+                   background:var(--n-900); color:var(--sheet); font-family:inherit; font-weight:500;
+                   font-size:12.5px; cursor:pointer; transition: background .12s, border-color .12s; }
+          button:hover:not(:disabled) { background:var(--n-800); border-color:var(--n-800); }
+          button:disabled { opacity:.45; cursor:not-allowed; }
+          .err { display:none; margin-top:14px; padding:7px 9px; background:var(--sheet);
+                 border:1px solid var(--bad); border-radius:2px; color:var(--bad); font-size:12px; }
+          .hint { margin-top:14px; font-size:11px; color:var(--n-500); line-height:1.55; font-family:'Plex',system-ui,sans-serif; }
+          .hint code { color:var(--n-600); font-family:'JBMono',ui-monospace,monospace; }
         </style>
         </head>
         <body>
@@ -95,7 +114,7 @@ public static class LoginPage
               body.username = document.getElementById('un').value;
             } else {
               var pw2 = document.getElementById('pw2').value;
-              if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = ''; return; }
+              if (pw !== pw2) { err.textContent = 'Passwords do not match.'; err.style.display = 'block'; return; }
             }
             var btn = e.target.querySelector('button');
             btn.disabled = true;
@@ -107,12 +126,12 @@ public static class LoginPage
               if (res.ok) { location.reload(); return; }
               return res.json().catch(function () { return {}; }).then(function (data) {
                 err.textContent = data.message || 'Something went wrong.';
-                err.style.display = '';
+                err.style.display = 'block';
                 btn.disabled = false;
               });
             }).catch(function () {
               err.textContent = 'Network error.';
-              err.style.display = '';
+              err.style.display = 'block';
               btn.disabled = false;
             });
           });

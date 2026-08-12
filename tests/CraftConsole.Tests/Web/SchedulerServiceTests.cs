@@ -13,6 +13,9 @@ public class SchedulerServiceTests : IDisposable
     private readonly string _dir;
     private readonly EventBroker _broker = new();
     private readonly FakeTimeProvider _time = new();
+    private readonly SettingsHolder _settings;
+    private readonly ServerRegistry _registry;
+    private readonly Guid _serverId = Guid.NewGuid();
     private readonly ServerSupervisor _supervisor;
     private readonly BackupService _backups;
     private readonly SchedulerService _scheduler;
@@ -22,17 +25,29 @@ public class SchedulerServiceTests : IDisposable
         _dir = Path.Combine(Path.GetTempPath(), "cc-sched-test-" + Guid.NewGuid());
         Directory.CreateDirectory(_dir);
 
-        var settings = new SettingsHolder(_dir);
+        _settings = new SettingsHolder(_dir);
         var secrets = new RconSecretStore(
-            settings,
+            _settings,
             Microsoft.AspNetCore.DataProtection.DataProtectionProvider.Create(
                 new DirectoryInfo(Path.Combine(_dir, "dpkeys"))),
             NullLogger<RconSecretStore>.Instance);
-        _supervisor = new ServerSupervisor(
-            _broker, settings, new HttpClient(), NullLogger<ServerSupervisor>.Instance, secrets);
-        _backups = new BackupService(_broker, settings, NullLogger<BackupService>.Instance);
+
+        // A task added below without an explicit ServerId falls back to
+        // whichever profile is "active" — set here to this test's one server,
+        // so every existing test in this file (none of which name a server)
+        // keeps targeting it without change.
+        _settings.Current.ActiveProfileId = _serverId.ToString();
+
+        _registry = new ServerRegistry(
+            _broker, _settings, new HttpClient(), NullLoggerFactory.Instance, secrets);
+        // Created via the registry, not directly — SchedulerService discovers
+        // servers to subscribe to through it (registry.All() at construction,
+        // SupervisorCreated afterwards), so it must be the one holding this id.
+        _supervisor = _registry.GetOrCreate(_serverId);
+
+        _backups = new BackupService(_broker, _settings, NullLogger<BackupService>.Instance);
         _scheduler = new SchedulerService(
-            _supervisor, _backups, _broker, settings, NullLogger<SchedulerService>.Instance, _time);
+            _registry, _backups, _broker, _settings, NullLogger<SchedulerService>.Instance, _time);
     }
 
     public void Dispose()
@@ -115,7 +130,7 @@ public class SchedulerServiceTests : IDisposable
         var task = await _scheduler.AddAsync(IntervalTask());
 
         var reloaded = new SchedulerService(
-            _supervisor, _backups, _broker, new SettingsHolder(_dir),
+            _registry, _backups, _broker, new SettingsHolder(_dir),
             NullLogger<SchedulerService>.Instance, _time);
         await reloaded.LoadAsync();
 

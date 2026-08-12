@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text.RegularExpressions;
 using CraftConsole.Core.Models;
 using CraftConsole.Core.Players;
@@ -38,11 +39,17 @@ public static class ServerEventParser
         }
 
         if (PlayerLogin.Match(msg) is { Success: true } login)
+        {
+            var capturedIp = login.Groups["ip"].Value;
             return new PlayerJoinedEvent(new Player
             {
                 Username  = login.Groups["name"].Value,
-                IpAddress = login.Groups["ip"].Value,
+                // Not just a format nicety: this value flows straight into an
+                // outbound geo-lookup URL, so an unparsable capture must not
+                // pass through as if it were a real address.
+                IpAddress = IPAddress.TryParse(capturedIp, out _) ? capturedIp : null,
             });
+        }
 
         if (PlayerJoin.Match(msg) is { Success: true } join)
             return new PlayerJoinedEvent(new Player { Username = join.Groups["name"].Value });

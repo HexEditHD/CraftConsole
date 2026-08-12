@@ -1,6 +1,6 @@
-// Live console: streamed log with level filter and search, command input
-// with history + autocomplete, online-players rail.
-import { h, icon, toast, fmtClock } from '../ui.js';
+// Console — the hero screen. Streamed log with a level filter and search,
+// command input with history + autocomplete, online-players panel.
+import { h, icon, toast, fmtClock, timeAgo, emptyBlock } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
 import { state } from '../store.js';
@@ -23,127 +23,150 @@ const COMMANDS = [
   '/whitelist', '/worldborder', '/xp',
 ];
 
+const QUICK = ['/list', '/save-all', '/whitelist on', '/weather clear', '/time set day'];
+
 const CHAT_RE = /^<(\w+)> /;
 const MAX_DOM_LINES = 3000;
+
+const FILTERS = [['all', 'All'], ['info', 'Info'], ['warn', 'Warn'], ['error', 'Error'], ['chat', 'Chat']];
+
+const isChat = entry => CHAT_RE.test(entry.message);
+
+/** Which of the five filter buckets an entry belongs to. */
+function bucketOf(entry) {
+  if (isChat(entry)) return 'chat';
+  const lvl = (entry.level ?? 'Unknown').toLowerCase();
+  if (lvl === 'warn') return 'warn';
+  if (lvl === 'error') return 'error';
+  if (lvl === 'info' || lvl === 'input') return 'info';
+  return null; // debug/unknown — only reachable under "all"
+}
 
 export default {
   id: 'console',
   title: 'Console',
+  subtitle: () => `Live output from ${state.status?.profile?.name ?? 'the server'}`,
   icon: 'terminal',
 
   render(el) {
     let levelFilter = 'all';
     let searchText = '';
-    let autoScroll = state.settings?.autoScrollConsole ?? true;
+    let follow = state.settings?.autoScrollConsole ?? true;
     let history = JSON.parse(localStorage.getItem('cc-cmd-history') ?? '[]');
     let historyIndex = -1;
     let selSuggestion = -1;
-    let pendingLines = [];
+    let pending = [];
     let rafQueued = false;
 
     applyColorVars(el);
 
-    // ── Toolbar ──────────────────────────────────────────────────────────
-    const chips = ['all', 'info', 'warn', 'error', 'debug'].map(lvl =>
-      h('button', {
-        class: `chip${lvl === 'all' ? ' active' : ''}`,
-        onclick: function () {
-          levelFilter = lvl;
-          el.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-          this.classList.add('active');
-          rebuildLog();
-        },
-      }, lvl === 'all' ? 'All' : lvl[0].toUpperCase() + lvl.slice(1)));
+    const segItems = {};
+    const seg = h('div', { class: 'seg' },
+      FILTERS.map(([id, label]) => {
+        const countEl = h('span', { class: 'count' }, '0');
+        const btn = h('button', {
+          class: `seg-item${id === 'all' ? ' active' : ''}`,
+          onclick: () => {
+            levelFilter = id;
+            seg.querySelectorAll('.seg-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            rebuild();
+          },
+        }, label, countEl);
+        segItems[id] = countEl;
+        return btn;
+      }));
 
     const searchInput = h('input', {
-      class: 'input search', placeholder: 'Filter…', type: 'search',
-      oninput: () => { searchText = searchInput.value.toLowerCase(); rebuildLog(); },
+      type: 'search', placeholder: 'Filter output',
+      oninput: () => { searchText = searchInput.value.toLowerCase(); rebuild(); },
     });
 
-    const autoBtn = h('button', {
-      class: `chip${autoScroll ? ' active' : ''}`,
+    const followBtn = h('button', {
+      class: `follow${follow ? ' on' : ''}`,
       title: 'Auto-scroll to newest output',
       onclick: () => {
-        autoScroll = !autoScroll;
-        autoBtn.classList.toggle('active', autoScroll);
-        if (autoScroll) scrollToBottom();
+        follow = !follow;
+        followBtn.classList.toggle('on', follow);
+        if (follow) toBottom();
       },
-    }, 'Auto-scroll');
+    }, h('span', { class: 'pip' }), 'Follow');
 
-    // ── Log area ─────────────────────────────────────────────────────────
-    const log = h('div', { class: 'console-log' });
-    log.addEventListener('scroll', () => {
-      const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-      if (nearBottom) hideJump();
-    });
+    const clearBtn = h('button', {
+      class: 'btn ghost sm icon-only', title: 'Clear console', 'aria-label': 'Clear console',
+      onclick: async () => { await api.del('/api/console'); },
+    }, icon('eraser'));
 
-    const jumpBtn = h('button', {
-      class: 'btn sm console-jump', style: { display: 'none' },
-      onclick: () => { scrollToBottom(); hideJump(); },
+    const log = h('div', { class: 'log' });
+    log.addEventListener('scroll', () => { if (nearBottom()) jump.style.display = 'none'; });
+
+    const jump = h('button', {
+      class: 'btn sm jump', style: { display: 'none' },
+      onclick: () => { toBottom(); jump.style.display = 'none'; },
     }, icon('arrowDown'), 'New output');
 
     // RCON has no log stream — only command replies and synthesized player
     // join/leave — so this view is a transcript there, not a live tail.
-    const rconNotice = h('div', { class: 'hint', style: { padding: '2px 2px 10px', display: 'none' } },
-      'RCON transcript — command replies and player join/leave only, not the full server log.');
+    const rconNote = h('div', {
+      class: 'hint', style: { padding: '6px 10px', display: 'none', borderBottom: '1px solid var(--rule)' },
+    }, 'RCON transcript — command replies and player join/leave only, not the full server log.');
 
-    const scrollToBottom = () => { log.scrollTop = log.scrollHeight; };
-    const isNearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-    const hideJump = () => { jumpBtn.style.display = 'none'; };
+    const toBottom = () => { log.scrollTop = log.scrollHeight; };
+    const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
 
-    // ── Input row ────────────────────────────────────────────────────────
-    const suggestBox = h('div', {
-      class: 'suggestions', style: { display: 'none' },
-      onmousedown: e => { if (e.target === suggestBox) e.preventDefault(); },
+    const suggest = h('div', {
+      class: 'suggest', style: { display: 'none' },
+      onmousedown: e => { if (e.target === suggest) e.preventDefault(); },
     });
 
     const input = h('input', {
       class: 'input',
-      placeholder: 'Type a command… ( / for autocomplete, ↑↓ for history )',
-      onkeydown: onInputKey,
-      oninput: refreshSuggestions,
+      placeholder: 'Run a command — / to autocomplete, ↑ for history',
+      onkeydown: onKey,
+      oninput: refreshSuggest,
     });
 
-    const sendBtn = h('button', { class: 'btn primary icon-only', title: 'Send', onclick: send }, icon('send'));
+    const sendBtn = h('button', {
+      class: 'btn primary send', title: 'Send', 'aria-label': 'Send command', onclick: send,
+    }, icon('send'));
 
-    // ── Players rail ─────────────────────────────────────────────────────
-    const rail = h('div', { class: 'console-rail' });
+    const railList = h('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--s2)' } });
+    const railHead = h('div', { class: 'rail-head' });
+    const railPanel = h('div', { class: 'rail-panel' },
+      railHead,
+      railList,
+      h('div', { class: 'quick' },
+        h('div', { class: 'rail-head' }, 'Quick commands'),
+        h('div', { class: 'quick-chips' },
+          QUICK.map(cmd => h('button', {
+            class: 'chip-cmd',
+            onclick: () => { input.value = cmd + ' '; input.focus(); },
+          }, cmd)))));
 
-    const layout = h('div', { class: 'console-layout' },
-      h('div', { class: 'console-main', style: { position: 'relative' } },
-        h('div', { class: 'console-toolbar' },
-          h('div', { class: 'chip-row' }, chips),
-          h('span', { class: 'spacer' }),
-          searchInput,
-          autoBtn,
-          h('button', {
-            class: 'btn sm ghost', title: 'Clear console',
-            onclick: async () => { await api.del('/api/console'); },
-          }, icon('eraser'), 'Clear')),
-        rconNotice,
-        log,
-        jumpBtn,
-        h('div', { class: 'console-input-row' }, suggestBox, input, sendBtn)),
-      rail);
-
-    el.append(layout);
+    el.append(h('div', { class: 'console-layout' },
+      h('div', { class: 'console-main' },
+        h('div', { class: 'console-bar' }, seg, h('div', { class: 'console-search' }, icon('search'), searchInput), followBtn, clearBtn),
+        rconNote,
+        h('div', { style: { position: 'relative', flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } }, log, jump),
+        h('div', { class: 'composer' }, suggest, h('span', { class: 'caret' }, '>'), input, sendBtn)),
+      railPanel));
     el.style.height = '100%';
 
-    // ── Rendering ────────────────────────────────────────────────────────
     function lineNode(entry) {
-      const lvl = (entry.level ?? 'Unknown').toLowerCase();
-      const row = h('div', { class: `console-line lvl-${lvl}` });
+      const raw = (entry.level ?? 'Unknown').toLowerCase();
+      const cls = isChat(entry) ? 'chat' : raw;
+      const row = h('div', { class: `line lv-${cls}` });
 
       if (state.settings?.showTimestamp ?? true)
         row.append(h('span', { class: 't' }, fmtClock(entry.timestamp, { date: state.settings?.showDate })));
 
-      row.append(h('span', { class: 'lvl' }, lvl === 'input' ? '>' : lvl.toUpperCase()));
+      row.append(h('span', { class: 'lv' }, cls === 'input' ? '>' : cls.toUpperCase()));
 
       const msg = h('span', { class: 'msg' });
       const chat = CHAT_RE.exec(entry.message);
       if (chat) {
         msg.append(
-          h('span', { class: 'chat-name', style: { color: usernameColor(chat[1]) } }, `<${chat[1]}>`),
+          h('span', { class: 'who', style: { color: usernameColor(chat[1]) } }, `<${chat[1]}>`),
           entry.message.slice(chat[0].length - 1));
       } else {
         msg.textContent = entry.message;
@@ -153,53 +176,67 @@ export default {
     }
 
     function matches(entry) {
-      const lvl = (entry.level ?? 'Unknown').toLowerCase();
-      if (levelFilter !== 'all' && lvl !== levelFilter && lvl !== 'input') return false;
+      if (levelFilter !== 'all' && bucketOf(entry) !== levelFilter) return false;
       if (searchText && !entry.message.toLowerCase().includes(searchText)) return false;
       return true;
     }
 
-    function rebuildLog() {
+    function syncCounts() {
+      const counts = { all: state.consoleEntries.length, info: 0, warn: 0, error: 0, chat: 0 };
+      for (const e of state.consoleEntries) {
+        const b = bucketOf(e);
+        if (b) counts[b]++;
+      }
+      for (const [id, node] of Object.entries(segItems)) node.textContent = String(counts[id] ?? 0);
+    }
+
+    function rebuild() {
       log.innerHTML = '';
       const frag = document.createDocumentFragment();
       for (const entry of state.consoleEntries)
         if (matches(entry)) frag.append(lineNode(entry));
       log.append(frag);
-      if (frag.childElementCount === 0 && log.childElementCount === 0 && !state.consoleEntries.length) {
+      syncCounts();
+
+      if (!frag.childElementCount && !log.childElementCount && !state.consoleEntries.length) {
         const hasStream = state.status?.capabilities?.hasConsoleStream ?? true;
-        log.append(h('div', { class: 'empty' },
-          icon('terminal'),
-          h('div', { class: 'empty-title' }, hasStream ? 'Console is quiet' : 'No activity yet'),
-          h('div', { class: 'empty-sub' }, hasStream
+        log.append(emptyBlock('terminal',
+          hasStream ? 'Console is quiet' : 'No activity yet',
+          hasStream
             ? 'Start the server to see live output here.'
-            : 'Connect to this server and send a command — RCON shows replies and player activity here, not the full server log.')));
+            : 'Connect to this server and send a command — RCON shows replies and player activity here, not the full server log.'));
       }
-      scrollToBottom();
+      toBottom();
     }
 
-    function syncCapabilities() {
-      rconNotice.style.display = (state.status?.capabilities?.hasConsoleStream ?? true) ? 'none' : '';
+    function syncCaps() {
+      const hasStream = state.status?.capabilities?.hasConsoleStream ?? true;
+      rconNote.style.display = hasStream ? 'none' : '';
     }
 
-    function flushPending() {
+    function flush() {
       rafQueued = false;
-      if (!pendingLines.length) return;
-      const stick = autoScroll && isNearBottom();
+      if (!pending.length) return;
+      const stick = follow && nearBottom();
       const frag = document.createDocumentFragment();
-      for (const entry of pendingLines)
-        if (matches(entry)) frag.append(lineNode(entry));
-      pendingLines = [];
+      for (const entry of pending) {
+        if (!matches(entry)) continue;
+        const node = lineNode(entry);
+        node.classList.add('new'); // only newly arrived lines animate — never the backlog
+        frag.append(node);
+      }
+      pending = [];
+      syncCounts();
       if (!frag.childElementCount) return;
 
       log.querySelector('.empty')?.remove();
       log.append(frag);
       while (log.childElementCount > MAX_DOM_LINES) log.firstElementChild.remove();
 
-      if (stick) scrollToBottom();
-      else jumpBtn.style.display = '';
+      if (stick) toBottom();
+      else jump.style.display = '';
     }
 
-    // ── Command input behaviors ──────────────────────────────────────────
     async function send() {
       const cmd = input.value.trim();
       if (!cmd) return;
@@ -210,17 +247,17 @@ export default {
       }
       historyIndex = -1;
       input.value = '';
-      hideSuggestions();
+      hideSuggest();
       try { await api.post('/api/server/command', { command: cmd }); }
       catch (err) { toast(err.message, 'err'); }
       input.focus();
     }
 
-    function onInputKey(e) {
-      const visible = suggestBox.style.display !== 'none';
-      if (visible && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    function onKey(e) {
+      const open = suggest.style.display !== 'none';
+      if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault();
-        const items = [...suggestBox.children];
+        const items = [...suggest.children];
         selSuggestion = e.key === 'ArrowDown'
           ? Math.min(selSuggestion + 1, items.length - 1)
           : Math.max(selSuggestion - 1, 0);
@@ -228,25 +265,25 @@ export default {
         items[selSuggestion]?.scrollIntoView({ block: 'nearest' });
         return;
       }
-      if (visible && e.key === 'Tab') {
+      if (open && e.key === 'Tab') {
         e.preventDefault();
-        acceptSuggestion(suggestBox.children[Math.max(selSuggestion, 0)]?.textContent);
+        accept(suggest.children[Math.max(selSuggestion, 0)]?.textContent);
         return;
       }
-      if (visible && e.key === 'Enter' && selSuggestion >= 0) {
+      if (open && e.key === 'Enter' && selSuggestion >= 0) {
         e.preventDefault();
-        acceptSuggestion(suggestBox.children[selSuggestion]?.textContent);
+        accept(suggest.children[selSuggestion]?.textContent);
         return;
       }
-      if (e.key === 'Escape') { hideSuggestions(); return; }
+      if (e.key === 'Escape') { hideSuggest(); return; }
       if (e.key === 'Enter') { send(); return; }
 
-      if (e.key === 'ArrowUp' && !visible) {
+      if (e.key === 'ArrowUp' && !open) {
         e.preventDefault();
         if (!history.length) return;
         historyIndex = historyIndex === -1 ? history.length - 1 : Math.max(historyIndex - 1, 0);
         input.value = history[historyIndex];
-      } else if (e.key === 'ArrowDown' && !visible) {
+      } else if (e.key === 'ArrowDown' && !open) {
         e.preventDefault();
         if (historyIndex === -1) return;
         if (historyIndex < history.length - 1) {
@@ -259,66 +296,61 @@ export default {
       }
     }
 
-    function refreshSuggestions() {
+    function refreshSuggest() {
       const value = input.value;
-      if (!value.startsWith('/')) { hideSuggestions(); return; }
+      if (!value.startsWith('/')) { hideSuggest(); return; }
       const found = COMMANDS.filter(c => c.startsWith(value.toLowerCase()));
-      if (!found.length || (found.length === 1 && found[0] === value)) { hideSuggestions(); return; }
-      suggestBox.innerHTML = '';
+      if (!found.length || (found.length === 1 && found[0] === value)) { hideSuggest(); return; }
+      suggest.innerHTML = '';
       selSuggestion = -1;
       for (const cmd of found)
-        suggestBox.append(h('div', {
-          class: 'suggestion',
-          onmousedown: e => { e.preventDefault(); acceptSuggestion(cmd); },
+        suggest.append(h('div', {
+          class: 'suggest-item',
+          onmousedown: e => { e.preventDefault(); accept(cmd); },
         }, cmd));
-      suggestBox.scrollTop = 0;
-      suggestBox.style.display = '';
+      suggest.scrollTop = 0;
+      suggest.style.display = '';
     }
 
-    function acceptSuggestion(cmd) {
+    function accept(cmd) {
       if (!cmd) return;
       input.value = cmd + ' ';
-      hideSuggestions();
+      hideSuggest();
       input.focus();
     }
 
-    function hideSuggestions() {
-      suggestBox.style.display = 'none';
+    function hideSuggest() {
+      suggest.style.display = 'none';
       selSuggestion = -1;
     }
 
-    // ── Players rail ─────────────────────────────────────────────────────
     function syncRail() {
-      rail.innerHTML = '';
-      if (!state.players.length) { rail.style.display = 'none'; return; }
-      rail.style.display = '';
-      rail.append(h('div', { class: 'rail-title' }, `Online — ${state.players.length}`));
+      railList.innerHTML = '';
+      if (!state.players.length) { railPanel.style.display = 'none'; return; }
+      railPanel.style.display = '';
+      railHead.replaceChildren('Online', h('span', { class: 'tag ok' }, String(state.players.length)));
       for (const p of state.players) {
-        const avatar = h('span', { class: 'avatar', style: { background: p.colorHex } }, p.username[0].toUpperCase());
-        const img = h('img', {
-          src: `https://mc-heads.net/avatar/${encodeURIComponent(p.username)}/28`,
-          alt: '', loading: 'lazy',
-          onerror: function () { this.remove(); },
-        });
-        avatar.prepend(img);
-        rail.append(h('div', { class: 'rail-player' }, avatar, h('span', { class: 'ellipsis' }, p.username)));
+        railList.append(h('div', { class: 'rail-player' },
+          h('span', { class: 'avatar sm', style: { background: p.colorHex } }, p.username[0].toUpperCase()),
+          h('div', { style: { minWidth: 0 } },
+            h('div', { class: 'who ellipsis' }, p.username),
+            h('div', { class: 'meta ellipsis' }, `${timeAgo(p.joinedAt)} · ${p.ipAddress ?? '—'}`))));
       }
     }
 
-    // ── Boot & subscriptions ─────────────────────────────────────────────
-    rebuildLog();
+    rebuild();
     syncRail();
-    syncCapabilities();
+    syncCaps();
     input.focus();
 
     const offs = [
       on('store:console', entry => {
-        pendingLines.push(entry);
-        if (!rafQueued) { rafQueued = true; requestAnimationFrame(flushPending); }
+        pending.push(entry);
+        if (!rafQueued) { rafQueued = true; requestAnimationFrame(flush); }
       }),
-      on('store:console-cleared', rebuildLog),
+      on('store:console-cleared', rebuild),
       on('store:players', syncRail),
-      on('store:status', syncCapabilities),
+      on('store:status', syncCaps),
     ];
     return () => {
       offs.forEach(off => off());
@@ -330,7 +362,7 @@ export default {
 function applyColorVars(el) {
   const s = state.settings;
   if (!s) return;
-  el.style.setProperty('--lvl-info', s.colorInfo);
-  el.style.setProperty('--lvl-warn', s.colorWarn);
-  el.style.setProperty('--lvl-error', s.colorError);
+  el.style.setProperty('--lv-info', s.colorInfo);
+  el.style.setProperty('--lv-warn', s.colorWarn);
+  el.style.setProperty('--lv-err', s.colorError);
 }

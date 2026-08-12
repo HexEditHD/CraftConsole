@@ -8,13 +8,21 @@ using CraftConsole.Core.Servers;
 namespace CraftConsole.Web.Services;
 
 /// <summary>
-/// Owns the running Minecraft server process and every piece of live state derived
-/// from its console stream: the console ring buffer, online players, detected
-/// issues, server version, and EULA state. All changes are fanned out to SSE
-/// clients through the <see cref="EventBroker"/>.
+/// Owns one server's running process and every piece of live state derived from
+/// its console stream: the console ring buffer, online players, detected issues,
+/// server version, and EULA state. All changes are fanned out to SSE clients
+/// through the <see cref="EventBroker"/>, scoped to <see cref="ServerId"/>.
+///
+/// One instance exists per profile that has ever been started, owned by
+/// <see cref="ServerRegistry"/> — this is no longer a DI singleton. ServerId is
+/// the profile's own id, fixed for the supervisor's lifetime; ActiveProfile is
+/// the latest snapshot of that profile as of the last StartAsync (null before
+/// the first start), since profile fields can be edited between runs.
 /// </summary>
 public sealed partial class ServerSupervisor : IAsyncDisposable
 {
+    public Guid ServerId { get; }
+
     private readonly EventBroker _broker;
     private readonly SettingsHolder _settings;
     private readonly HttpClient _http;
@@ -75,9 +83,10 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     private static partial Regex VersionPattern();
 
     public ServerSupervisor(
-        EventBroker broker, SettingsHolder settings, HttpClient http, ILogger<ServerSupervisor> log,
+        Guid serverId, EventBroker broker, SettingsHolder settings, HttpClient http, ILogger<ServerSupervisor> log,
         RconSecretStore secrets)
     {
+        ServerId = serverId;
         _broker = broker;
         _settings = settings;
         _http = http;
@@ -171,6 +180,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     {
         var cmd = command.Trim();
         if (cmd.Length == 0) return;
+
+        // A line break here would let one call write two lines to the child's
+        // stdin — i.e. two Minecraft console commands. Every caller is expected
+        // to send one command; reject rather than silently splitting or joining.
+        if (cmd.Contains('\n') || cmd.Contains('\r'))
+        {
+            AppendEntry(new ConsoleEntry(
+                DateTimeOffset.Now, Raw: "Command rejected: line breaks are not allowed.",
+                Message: "Command rejected: line breaks are not allowed.", Level: ConsoleEntryLevel.Error));
+            return;
+        }
 
         AppendEntry(new ConsoleEntry(
             DateTimeOffset.Now, Raw: $"> {cmd}", Message: $"> {cmd}", Level: ConsoleEntryLevel.Input));
@@ -292,7 +312,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     public void ClearConsole()
     {
         lock (_lock) _console.Clear();
-        _broker.Publish("console-cleared", new { });
+        _broker.Publish("console-cleared", ServerId, new { });
     }
 
     public List<object> PlayersSnapshot()
@@ -312,7 +332,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             _issues.Clear();
             _nextIssueId = 1;
         }
-        _broker.Publish("issues-cleared", new { });
+        _broker.Publish("issues-cleared", ServerId, new { });
     }
 
     /// <summary>Development helper: push a raw line through the same pipeline as real output.</summary>
@@ -359,7 +379,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                 _issues.Add(issue);
                 if (_issues.Count > 500) _issues.RemoveAt(0);
             }
-            _broker.Publish("issue", issue);
+            _broker.Publish("issue", ServerId, issue);
         }
 
         if (ServerEventParser.TryParse(entry) is { } evt)
@@ -378,7 +398,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
             if (_console.Count > max)
                 _console.RemoveRange(0, _console.Count - max);
         }
-        _broker.Publish("console", entry);
+        _broker.Publish("console", ServerId, entry);
     }
 
     private void HandleGameEvent(ServerEvent evt)
@@ -402,6 +422,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                     else
                     {
                         _players.Add(joined.Player);
+                        if (_players.Count > 500) _players.RemoveAt(0);
                         geoTarget = joined.Player;
                     }
                 }
@@ -438,8 +459,8 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         PublishStatus();
     }
 
-    private void PublishStatus() => _broker.Publish("status", StatusSnapshot());
-    private void PublishPlayers() => _broker.Publish("players", new { Players = PlayersSnapshot() });
+    private void PublishStatus() => _broker.Publish("status", ServerId, StatusSnapshot());
+    private void PublishPlayers() => _broker.Publish("players", ServerId, new { Players = PlayersSnapshot() });
 
     private object PlayerDto(Player p) => new
     {
@@ -532,21 +553,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
     // ── server.properties helpers ─────────────────────────────────────────
 
     private static int ReadMaxPlayers(string workingDirectory)
-    {
-        try
-        {
-            var path = Path.Combine(workingDirectory, "server.properties");
-            if (!File.Exists(path)) return 20;
-            foreach (var line in File.ReadLines(path))
-            {
-                if (line.StartsWith("max-players=", StringComparison.OrdinalIgnoreCase)
-                    && int.TryParse(line["max-players=".Length..].Trim(), out var max) && max > 0)
-                    return max;
-            }
-        }
-        catch { /* unreadable — keep default */ }
-        return 20;
-    }
+        => int.TryParse(ServerProperties.Read(workingDirectory, "max-players"), out var max) && max > 0 ? max : 20;
 
     // ── Disposal ──────────────────────────────────────────────────────────
 

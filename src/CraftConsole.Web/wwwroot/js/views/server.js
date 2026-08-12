@@ -2,14 +2,16 @@
 import { h, icon, toast, confirmDialog, modal } from '../ui.js';
 import { api } from '../api.js';
 import { on } from '../bus.js';
-import { state } from '../store.js';
-import { createServerControls } from '../components/server-controls.js';
+import { state, hydrateServerList } from '../store.js';
 import { joinPath } from '../platform.js';
+import { openPathPicker, withBrowse } from '../components/path-picker.js';
+import { changeServerPort } from '../components/port-editor.js';
 
 export default {
   id: 'server',
   title: 'Server',
-  icon: 'server',
+  subtitle: 'Profiles, JARs and Java runtimes',
+  icon: 'drives',
 
   render(el) {
     let profiles = [];
@@ -37,6 +39,16 @@ export default {
       class: 'input',
       placeholder: joinPath(state.system?.defaultServerRoot ?? 'C:\\MinecraftServers', 'my-server'),
     });
+    const dirBrowseBtn = h('button', {
+      class: 'btn sm icon-only', title: 'Browse for a folder', 'aria-label': 'Browse for a folder',
+      onclick: async () => {
+        // The default goes in as defaultPath, not as the start path: the picker
+        // treats a start path as something the user chose and honours it, but
+        // will step a non-existent default aside in favour of home.
+        const picked = await openPathPicker({ startPath: dirInput.value.trim(), defaultPath: state.system?.defaultServerRoot });
+        if (picked) dirInput.value = picked;
+      },
+    }, icon('folder'));
     const dlBtn = h('button', { class: 'btn primary', onclick: startServerDownload }, icon('download'), 'Download JAR');
     const dlCancel = h('button', { class: 'btn sm ghost', style: { display: 'none' }, onclick: () => api.post('/api/setup/cancel/server') }, 'Cancel');
     const dlBar = h('div', { class: 'progress', style: { display: 'none' } }, h('div'));
@@ -45,9 +57,9 @@ export default {
 
     const manualCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
-        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const manualLink = h('a', { target: '_blank', rel: 'noopener noreferrer' }, 'Official website');
@@ -64,7 +76,9 @@ export default {
       typeGrid,
       h('div', { class: 'field-row', style: { marginTop: '14px' } },
         h('div', { class: 'field' }, h('label', {}, 'Version'), versionSelect),
-        h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Destination folder'), dirInput)),
+        h('div', { class: 'field', style: { flex: 2 } },
+          h('label', {}, 'Destination folder'),
+          h('div', { style: { display: 'flex', gap: '6px' } }, dirInput, dirBrowseBtn))),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } }, dlBtn),
       dlStatus,
       manualBox);
@@ -80,9 +94,9 @@ export default {
 
     const javaLinuxCommands = h('pre', {
       class: 'mono', style: {
-        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--surface-2)',
-        border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px',
-        fontSize: '12px', marginTop: '8px', marginBottom: '8px',
+        whiteSpace: 'pre-wrap', wordBreak: 'break-all', background: 'var(--sheet-3)',
+        border: '1px solid var(--rule-firm)', borderRadius: 'var(--r)', padding: 'var(--s2) var(--s3)',
+        fontSize: 'var(--t-sm)', marginTop: 'var(--s2)', marginBottom: 'var(--s2)',
       },
     });
     const javaLinuxHint = h('div', { style: { display: 'none', marginTop: '12px' } },
@@ -115,6 +129,11 @@ export default {
         profiles = data.profiles ?? [];
         activeId = data.activeProfileId;
       } catch { profiles = []; }
+      // /api/profiles carries no port/working-directory conflict data — that
+      // only exists on /api/servers — so refresh it here too. This is the
+      // screen where a profile's port or folder actually gets fixed, and
+      // without this the flag would stay stale until switchServer() runs.
+      await hydrateServerList();
       buildProfileList();
     }
 
@@ -122,7 +141,7 @@ export default {
       profileList.innerHTML = '';
       if (!profiles.length) {
         profileList.append(h('div', { class: 'empty' },
-          icon('server'),
+          icon('hardDrives'),
           h('div', { class: 'empty-title' }, 'No profiles yet'),
           h('div', { class: 'empty-sub' }, 'A profile bundles a server JAR, its folder, Java, and memory settings. Create one, or download a JAR below to get started.')));
         return;
@@ -131,13 +150,30 @@ export default {
         const isActive = activeId === p.id;
         const isRcon = p.mode === 'Rcon';
         const busy = ['Running', 'Starting', 'Stopping'].includes(state.status?.status);
-        profileList.append(h('div', { class: 'card profile-card', style: { padding: '13px 16px', background: 'var(--surface-2)' } },
+        const status = state.status?.status ?? 'Stopped';
+        // Port/working-directory conflicts live on /api/servers, not
+        // /api/profiles — this is the screen you'd actually come to fix one,
+        // so it needs real visible text, not just the switcher's hover tag.
+        const conflict = state.servers.find(s => s.id === p.id);
+        profileList.append(h('div', { class: `card profile-card${isActive ? ' active' : ''}`, style: { padding: '13px 16px' } },
           h('div', { class: 'info' },
             h('div', { class: 'name' },
               p.name,
-              isRcon ? h('span', { class: 'badge info' }, 'RCON') : h('span', { class: 'badge' }, p.type),
-              !isRcon && p.minecraftVersion ? h('span', { class: 'badge info' }, p.minecraftVersion) : null,
-              isActive ? h('span', { class: 'badge accent' }, 'ACTIVE') : null),
+              isRcon ? h('span', { class: 'tag' }, 'RCON') : h('span', { class: 'tag' }, p.type),
+              !isRcon && p.minecraftVersion ? h('span', { class: 'tag' }, p.minecraftVersion) : null,
+              isActive ? h('span', { class: 'tag live' }, 'ACTIVE') : null,
+              conflict?.portConflict
+                ? h('span', {
+                    class: 'tag warn',
+                    title: 'Another Managed profile is configured with the same server-port.',
+                  }, 'Port conflict')
+                : null,
+              conflict?.workingDirectoryConflict
+                ? h('span', {
+                    class: 'tag warn',
+                    title: 'Another Managed profile points at the same working directory.',
+                  }, 'Same folder')
+                : null),
             h('div', { class: 'meta' }, isRcon
               ? `${p.rconHost}:${p.rconPort}`
               : `${p.minRamMb}–${p.maxRamMb} MB · ${p.workingDirectory}`)),
@@ -147,7 +183,7 @@ export default {
               onclick: () => activate(p.id),
             }, 'Set active') : null,
             isActive
-              ? createServerControls().el
+              ? h('span', { class: `status-pill ${status.toLowerCase()}` }, status)
               : h('button', {
                   class: 'btn sm primary',
                   title: busy
@@ -156,9 +192,15 @@ export default {
                   onclick: () => start(p.id),
                   disabled: busy,
                 }, icon('play'), isRcon ? 'Switch & connect' : 'Switch & start'),
-            h('button', { class: 'btn sm icon-only', title: 'Edit', onclick: () => openProfileEditor(p) }, icon('pencil')),
+            conflict?.portConflict
+              ? h('button', {
+                  class: 'btn sm', title: 'Change this server’s port',
+                  onclick: () => changeServerPort(conflict),
+                }, 'Change port')
+              : null,
+            h('button', { class: 'btn sm icon-only', title: 'Edit', 'aria-label': `Edit “${p.name}”`, onclick: () => openProfileEditor(p) }, icon('pencilSimple')),
             h('button', {
-              class: 'btn sm icon-only danger', title: 'Delete',
+              class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${p.name}”`,
               onclick: async () => {
                 if (!await confirmDialog('Delete profile', `Delete profile “${p.name}”? Server files on disk are not touched.`, { danger: true, okLabel: 'Delete' })) return;
                 await api.del(`/api/profiles/${p.id}`);
@@ -222,7 +264,15 @@ export default {
         }),
       };
 
-      const syncCustom = () => { f.javaCustom.style.display = f.java.value === '__custom' ? '' : 'none'; };
+      // The custom-path row is the input *and* its Browse button, so the whole
+      // row has to hide together — toggling the input alone would strand the
+      // button next to the Java dropdown.
+      // No extension filter on it: the launcher is java.exe on Windows and an
+      // extensionless binary on Linux, so there is nothing common to match on.
+      const javaCustomRow = withBrowse(f.javaCustom, { mode: 'file', browseLabel: 'Browse for a Java executable' });
+      javaCustomRow.style.marginTop = '6px';
+
+      const syncCustom = () => { javaCustomRow.style.display = f.java.value === '__custom' ? '' : 'none'; };
       f.java.addEventListener('change', syncCustom);
       syncCustom();
 
@@ -232,10 +282,12 @@ export default {
 
       const managedFields = h('div', {},
         h('div', { class: 'field-row' },
-          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'), f.jar),
+          h('div', { class: 'field', style: { flex: 2 } }, h('label', {}, 'Server JAR path'),
+            withBrowse(f.jar, { mode: 'file', ext: '.jar', defaultPath: state.system?.defaultServerRoot })),
           h('div', { class: 'field' }, h('label', {}, 'Type'), f.type)),
-        h('div', { class: 'field' }, h('label', {}, 'Working directory'), f.dir),
-        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, f.javaCustom),
+        h('div', { class: 'field' }, h('label', {}, 'Working directory'),
+          withBrowse(f.dir, { defaultPath: state.system?.defaultServerRoot })),
+        h('div', { class: 'field' }, h('label', {}, 'Java runtime'), f.java, javaCustomRow),
         h('div', { class: 'field-row' },
           h('div', { class: 'field' }, h('label', {}, 'Min RAM (MB)'), f.minRam),
           h('div', { class: 'field' }, h('label', {}, 'Max RAM (MB)'), f.maxRam),
@@ -300,14 +352,18 @@ export default {
               const req = isNew
                 ? api.post('/api/profiles', body)
                 : api.put(`/api/profiles/${profile.id}`, body);
-              req.then(async created => {
+              // Returned so modal() awaits the whole chain — the RCON password
+              // is a second request that only runs after the profile itself is
+              // saved, and without the return the dialog closed before it had
+              // even been sent, taking the typed password with it.
+              return req.then(async created => {
                 if (mode === 'Rcon' && password) {
                   const id = isNew ? created.id : profile.id;
                   await api.put(`/api/profiles/${id}/rcon-password`, { password });
                 }
                 toast(isNew ? 'Profile created' : 'Profile saved');
                 loadProfiles();
-              }).catch(err => toast(err.message, 'err'));
+              }).catch(err => { toast(err.message, 'err'); return false; });
             },
           },
         ],
@@ -332,7 +388,7 @@ export default {
         },
           h('div', { class: 'type-name' },
             t.displayName,
-            h('span', { class: `badge ${t.tag === 'RECOMMENDED' ? 'accent' : t.tag === 'OFFICIAL' ? 'info' : ''}` }, t.tag)),
+            h('span', { class: `tag ${t.tag === 'RECOMMENDED' ? 'live' : ''}` }, t.tag)),
           h('div', { class: 'type-desc' }, t.description)));
       }
       const manual = selectedType && !selectedType.hasAutoDownload;
@@ -382,7 +438,7 @@ export default {
       catch { javaInstalls = []; }
       javaList.innerHTML = '';
       if (!javaInstalls.length) {
-        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--text-3)', fontSize: '12.5px' } },
+        javaList.append(h('div', { class: 'empty-sub', style: { color: 'var(--ink-low)', fontSize: 'var(--t-sm)' } },
           'No Java runtimes found. Download one below — Minecraft 1.21+ needs Java 21.'));
         return;
       }
@@ -391,7 +447,7 @@ export default {
           h('div', {},
             h('div', { class: 'switch-label' }, j.label),
             h('div', { class: 'switch-desc mono' }, j.executablePath)),
-          h('span', { class: 'badge accent' }, `Java ${j.majorVersion}`)));
+          h('span', { class: 'tag live' }, `Java ${j.majorVersion}`)));
       }
     }
 
@@ -475,13 +531,17 @@ export default {
     });
 
     const offStatus = on('store:status', buildProfileList);
+    // Port/working-directory conflict flags live on state.servers, not
+    // state.status — refresh here too so a port changed from the switcher
+    // (or cleared by editing another profile) shows up without a reload.
+    const offServers = on('store:servers', buildProfileList);
 
     loadProfiles();
     loadTypes();
     detectJava();
     loadJavaVersions();
 
-    return () => { offSetup(); offStatus(); };
+    return () => { offSetup(); offStatus(); offServers(); };
   },
 };
 

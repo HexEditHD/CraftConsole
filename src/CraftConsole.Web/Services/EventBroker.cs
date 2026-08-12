@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 namespace CraftConsole.Web.Services;
@@ -27,9 +28,29 @@ public sealed class EventBroker
         return (channel.Reader, new Subscription(this, channel));
     }
 
+    /// <summary>Genuinely global event — settings changed, the server list itself changed.</summary>
     public void Publish(string eventName, object payload)
+        => PublishRaw(eventName, JsonSerializer.Serialize(payload, Json.Options));
+
+    /// <summary>
+    /// Event scoped to one server. serverId is folded into the payload's own JSON
+    /// (as "serverId") rather than carried out-of-band, so the wire format and
+    /// ServerApi's SSE write loop need no change — every client already parses
+    /// "data:" as one JSON object; it just gains a field to filter on.
+    /// </summary>
+    public void Publish(string eventName, Guid serverId, object payload)
     {
-        var json = JsonSerializer.Serialize(payload, Json.Options);
+        var node = JsonSerializer.SerializeToNode(payload, Json.Options);
+        if (node is not JsonObject obj)
+            throw new InvalidOperationException(
+                $"Scoped SSE payloads must serialize to a JSON object (event \"{eventName}\" did not).");
+
+        obj["serverId"] = serverId.ToString();
+        PublishRaw(eventName, obj.ToJsonString(Json.Options));
+    }
+
+    private void PublishRaw(string eventName, string json)
+    {
         Channel<SsePayload>[] targets;
         lock (_lock) targets = [.. _subscribers];
 

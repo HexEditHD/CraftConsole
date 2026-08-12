@@ -13,16 +13,16 @@ const SWATCHES = {
 const DEFAULTS = { colorInfo: '#94A3B8', colorWarn: '#FB923C', colorError: '#F87171', colorPlayer: '#22C55E' };
 
 function tlsCard() {
-  const body = h('div', { class: 'tls-body' }, h('p', { class: 'muted small' }, 'Loading…'));
+  const body = h('div', { class: 'tls-body' }, h('p', { class: 'dimmer small' }, 'Loading…'));
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' }, 'TLS certificate'),
     body);
 
   const renderPinned = status => {
     body.replaceChildren(
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         `Certificate pinned via --cert-path — expires ${new Date(status.expiry).toLocaleDateString()}.`),
-      h('p', { class: 'muted small' }, 'Remove --cert-path to manage the certificate from here instead.'));
+      h('p', { class: 'dimmer small' }, 'Remove --cert-path to manage the certificate from here instead.'));
   };
 
   const renderManaged = status => {
@@ -57,9 +57,9 @@ function tlsCard() {
       submit);
 
     body.replaceChildren(
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         `${sourceLabel} — expires ${new Date(status.expiry).toLocaleDateString()}.`),
-      h('p', { class: 'muted small' },
+      h('p', { class: 'dimmer small' },
         'Self-signed certificates trigger a one-time browser warning; that’s expected. Upload your own certificate and key (e.g. from Let’s Encrypt or an internal CA) to replace it — it takes effect immediately, no restart.'),
       form);
   };
@@ -71,7 +71,7 @@ function tlsCard() {
       else renderManaged(status);
     } catch {
       body.replaceChildren(
-        h('p', { class: 'muted small' },
+        h('p', { class: 'dimmer small' },
           'Running in plain HTTP mode (started with --http). No TLS certificate is in use.'));
     }
   })();
@@ -82,7 +82,7 @@ function tlsCard() {
 const ROLES = ['Operator', 'Admin'];
 
 function usersCard() {
-  const body = h('div', {}, h('p', { class: 'muted small' }, 'Loading…'));
+  const body = h('div', {}, h('p', { class: 'dimmer small' }, 'Loading…'));
   const card = h('div', { class: 'card' },
     h('div', { class: 'card-title' },
       'Users',
@@ -92,7 +92,7 @@ function usersCard() {
 
   async function load() {
     try { build((await api.get('/api/users')).users ?? []); }
-    catch (err) { body.replaceChildren(h('p', { class: 'muted small' }, err.message)); }
+    catch (err) { body.replaceChildren(h('p', { class: 'dimmer small' }, err.message)); }
   }
 
   function build(users) {
@@ -110,8 +110,8 @@ function usersCard() {
           },
         }, ROLES.map(r => h('option', { value: r, selected: u.role === r }, r)))),
         h('td', {}, u.enabled
-          ? h('span', { class: 'badge accent' }, 'Enabled')
-          : h('span', { class: 'badge warn' }, 'Disabled')),
+          ? h('span', { class: 'tag ok' }, 'Enabled')
+          : h('span', { class: 'tag warn' }, 'Disabled')),
         h('td', {}, h('div', { class: 'actions' },
           h('button', {
             class: 'btn sm',
@@ -123,7 +123,7 @@ function usersCard() {
           }, u.enabled ? 'Disable' : 'Enable'),
           h('button', { class: 'btn sm', onclick: () => openPasswordReset(u) }, 'Reset password'),
           h('button', {
-            class: 'btn sm icon-only danger', title: 'Delete',
+            class: 'btn sm icon-only danger', title: 'Delete', 'aria-label': `Delete “${u.username}”`,
             onclick: async () => {
               if (!await confirmDialog('Delete user', `Delete “${u.username}”?`, { danger: true, okLabel: 'Delete' })) return;
               api.del(`/api/users/${u.id}`).then(load).catch(err => toast(err.message, 'err'));
@@ -150,9 +150,13 @@ function usersCard() {
           onClick: () => {
             if (!username.value.trim()) { toast('A username is required.', 'err'); return false; }
             if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
-            api.post('/api/users', { username: username.value.trim(), password: password.value, role: role.value })
+            // Returned so modal() awaits it: a rejected request resolves to
+            // false, which keeps the dialog open with what was typed still in
+            // it. Without the return the dialog closed on the spot and a
+            // rejection (e.g. the username is taken) threw the entry away.
+            return api.post('/api/users', { username: username.value.trim(), password: password.value, role: role.value })
               .then(() => { toast('User created'); load(); })
-              .catch(err => toast(err.message, 'err'));
+              .catch(err => { toast(err.message, 'err'); return false; });
           },
         },
       ],
@@ -172,9 +176,11 @@ function usersCard() {
           kind: 'primary',
           onClick: () => {
             if (password.value.length < 8) { toast('Password must be at least 8 characters.', 'err'); return false; }
-            api.put(`/api/users/${u.id}/password`, { newPassword: password.value })
+            // Returned for the same reason as the create dialog above — a
+            // failed reset must not silently discard the typed password.
+            return api.put(`/api/users/${u.id}/password`, { newPassword: password.value })
               .then(() => toast('Password reset'))
-              .catch(err => toast(err.message, 'err'));
+              .catch(err => { toast(err.message, 'err'); return false; });
           },
         },
       ],
@@ -183,6 +189,64 @@ function usersCard() {
 
   load();
   return card;
+}
+
+// Write-only, same convention as the RCON password field on a profile: the
+// key itself is never read back, only whether one is set (state.settings's
+// hasCurseForgeApiKey — see SetupApi's settings snapshot).
+function curseForgeCard() {
+  const status = h('p', { class: 'dim small' });
+  const keyInput = h('input', { class: 'input', type: 'password', placeholder: 'CurseForge API key', autocomplete: 'off' });
+  const submit = h('button', { class: 'btn primary sm', type: 'submit' }, 'Save');
+  const removeBtn = h('button', { class: 'btn sm ghost', type: 'button' }, 'Remove');
+
+  const syncStatus = () => {
+    const has = !!state.settings?.hasCurseForgeApiKey;
+    status.textContent = has
+      ? 'An API key is set.'
+      : 'No API key set — Browse → CurseForge is unavailable until one is added.';
+    removeBtn.style.display = has ? '' : 'none';
+  };
+
+  removeBtn.addEventListener('click', async () => {
+    if (!await confirmDialog('Remove API key',
+      'Remove the stored CurseForge API key? Browse → CurseForge stops working until a new one is added.',
+      { danger: true, okLabel: 'Remove' })) return;
+    try {
+      await api.del('/api/settings/curseforge-key');
+      state.settings.hasCurseForgeApiKey = false;
+      syncStatus();
+      toast('CurseForge API key removed');
+    } catch (err) { toast(err.message, 'err'); }
+  });
+
+  const form = h('form', {
+    onsubmit: async e => {
+      e.preventDefault();
+      const value = keyInput.value.trim();
+      if (!value) return;
+      submit.disabled = true;
+      try {
+        await api.put('/api/settings/curseforge-key', { apiKey: value });
+        state.settings.hasCurseForgeApiKey = true;
+        keyInput.value = '';
+        syncStatus();
+        toast('CurseForge API key saved');
+      } catch (err) { toast(err.message, 'err'); }
+      finally { submit.disabled = false; }
+    },
+  },
+    h('div', { class: 'field' }, h('label', {}, 'API key'), keyInput),
+    h('div', { style: { display: 'flex', gap: '8px' } }, submit, removeBtn));
+
+  syncStatus();
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-title' }, 'CurseForge'),
+    status,
+    h('p', { class: 'dimmer small' },
+      'Required to browse and install from CurseForge — get one at console.curseforge.com/#/api-keys. Modrinth needs no key.'),
+    form);
 }
 
 function securityCard() {
@@ -218,6 +282,7 @@ function securityCard() {
 export default {
   id: 'settings',
   title: 'Settings',
+  subtitle: 'Panel, users and TLS certificate',
   icon: 'sliders',
 
   render(el) {
@@ -239,14 +304,16 @@ export default {
       } catch (err) { toast(err.message, 'err'); }
     }, 500);
 
-    const switchRow = (label, desc, key) =>
-      h('div', { class: 'switch-row' },
+    // sep: fade the row's bottom edge, for rows that aren't last in their card.
+    const switchRow = (label, desc, key, sep = true) =>
+      h('div', { class: `switch-row${sep ? ' rule-fade-bottom' : ''}` },
         h('div', {},
           h('div', { class: 'switch-label' }, label),
           h('div', { class: 'switch-desc' }, desc)),
         h('label', { class: 'switch' },
           h('input', {
             type: 'checkbox', checked: !!s[key],
+            role: 'switch', 'aria-checked': String(!!s[key]), 'aria-label': label,
             onchange: e => { s[key] = e.target.checked; save(); },
           }),
           h('span', { class: 'track' })));
@@ -270,7 +337,7 @@ export default {
         maxLines));
 
     const colorRow = (label, key) => {
-      const preview = h('span', { class: 'color-preview', style: { background: s[key] } });
+      const preview = h('span', { class: 'swatch-preview', style: { background: s[key] } });
       const custom = h('input', {
         type: 'color', value: s[key],
         style: { width: '26px', height: '26px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' },
@@ -278,7 +345,7 @@ export default {
       });
       return h('div', { class: 'switch-row' },
         h('div', { class: 'switch-label' }, label),
-        h('div', { class: 'swatch-row' },
+        h('div', { class: 'swatches' },
           preview,
           SWATCHES[key].map(hex => h('button', {
             class: 'swatch', title: hex, style: { background: hex },
@@ -314,13 +381,52 @@ export default {
 
     const aboutCard = h('div', { class: 'card' },
       h('div', { class: 'card-title' }, 'About'),
-      h('p', { class: 'text-2 small' },
+      h('p', { class: 'dim small' },
         'CraftConsole — a local web panel for managing Minecraft servers. ',
         `Settings, profiles, tasks, and backups persist in ${state.system?.dataDirectory ?? 'the app data directory'}.`),
-      h('p', { class: 'muted small', style: { marginTop: '8px' } },
+      h('p', { class: 'dimmer small', style: { marginTop: '8px' } },
         'The panel binds to localhost by default. A password is required for every request, so exposing it further (e.g. --urls) is reasonable — do it over a trusted network or an SSH tunnel.'));
 
-    el.append(h('div', { class: 'grid', style: { maxWidth: '660px' } },
-      consoleCard, colorsCard, securityCard(), usersCard(), tlsCard(), aboutCard));
+    // usersCard()/tlsCard() self-load over the API on construction — build
+    // them (and securityCard()/curseForgeCard(), for consistency) only once
+    // their tab is actually visited, and cache the result so revisiting
+    // doesn't re-fetch.
+    let securityEl = null, usersEl = null, tlsEl = null, curseForgeEl = null;
+    const getSecurity = () => securityEl ??= securityCard();
+    const getUsers = () => usersEl ??= usersCard();
+    const getTls = () => tlsEl ??= tlsCard();
+    const getCurseForge = () => curseForgeEl ??= curseForgeCard();
+
+    const TABS = [
+      ['console', 'Console'],
+      ['security', 'Security'],
+      ['users', 'Users'],
+      ['tls', 'Integrations & about'],
+    ];
+    let activeTab = 'console';
+    const tabsEl = h('div', { class: 'seg', style: { width: 'fit-content', marginBottom: 'var(--s4)' } });
+    const body = h('div', { class: 'settings-col' });
+
+    function buildTabs() {
+      tabsEl.innerHTML = '';
+      for (const [id, label] of TABS) {
+        tabsEl.append(h('button', {
+          class: `seg-item${activeTab === id ? ' active' : ''}`,
+          onclick: () => { activeTab = id; buildTabs(); buildBody(); },
+        }, label));
+      }
+    }
+
+    function buildBody() {
+      body.innerHTML = '';
+      if (activeTab === 'console') body.append(consoleCard, colorsCard);
+      else if (activeTab === 'security') body.append(getSecurity());
+      else if (activeTab === 'users') body.append(getUsers());
+      else body.append(getTls(), getCurseForge(), aboutCard);
+    }
+
+    buildTabs();
+    buildBody();
+    el.append(tabsEl, body);
   },
 };
