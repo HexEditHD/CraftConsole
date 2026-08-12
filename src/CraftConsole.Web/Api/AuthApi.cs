@@ -40,19 +40,20 @@ public static class AuthApi
         app.MapPost("/api/auth/login", (LoginRequest req, AuthService auth, HttpContext ctx) =>
         {
             var ip = ClientIp(ctx);
-            if (auth.IsLockedOut(ip))
+            var username = req.Username ?? "";
+            if (auth.IsLockedOut(ip, username))
                 return Results.Json(
                     new { Message = "Too many attempts. Try again in a few minutes." },
                     statusCode: StatusCodes.Status429TooManyRequests);
 
-            var user = auth.VerifyCredentials(req.Username ?? "", req.Password ?? "");
+            var user = auth.VerifyCredentials(username, req.Password ?? "");
             if (user is null)
             {
-                auth.RegisterFailure(ip);
+                auth.RegisterFailure(ip, username);
                 return Results.Json(new { Message = "Incorrect username or password." }, statusCode: StatusCodes.Status401Unauthorized);
             }
 
-            auth.ClearFailures(ip);
+            auth.ClearFailures(ip, username);
             IssueSessionCookie(ctx, auth, user.Id);
             return Results.NoContent();
         });

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -92,6 +93,24 @@ public sealed class RbacHttpTests : IAsyncDisposable
         await _auth.SetEnabledAsync(op.Id, false);
 
         var res = await client.GetAsync("/api/status");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_admin_resetting_another_users_password_revokes_that_users_existing_session()
+    {
+        var admin = _auth.ListUsers().Single();
+        var (_, op) = await _auth.CreateUserAsync("op", "operator-password-123", Role.Operator);
+        using var targetClient = ClientFor(op!.Id);
+        Assert.True((await targetClient.GetAsync("/api/status")).IsSuccessStatusCode);
+
+        using var adminClient = ClientFor(admin.Id);
+        var reset = await adminClient.PutAsJsonAsync(
+            $"/api/users/{op.Id}/password", new { newPassword = "brand-new-password-123" });
+        Assert.True(reset.IsSuccessStatusCode, await reset.Content.ReadAsStringAsync());
+
+        var res = await targetClient.GetAsync("/api/status");
 
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }

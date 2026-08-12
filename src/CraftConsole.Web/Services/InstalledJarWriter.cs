@@ -22,6 +22,14 @@ internal static class InstalledJarWriter
         DownloadService downloader, string url, string directory,
         string fileName, string? replacedFileName, CancellationToken ct)
     {
+        // Both current callers already sanitize via Path.GetFileName before calling
+        // in, but this method has no way to know that of a future caller — refuse
+        // to trust either name as anything but a bare filename.
+        if (!IsPlainFileName(fileName))
+            throw new InvalidOperationException($"\"{fileName}\" is not a valid plain file name.");
+        if (replacedFileName is not null && !IsPlainFileName(replacedFileName))
+            throw new InvalidOperationException($"\"{replacedFileName}\" is not a valid plain file name.");
+
         var destination = Path.Combine(directory, fileName);
 
         // Dot-prefixed and never .jar: WorkspaceApi's plugin scan and the
@@ -69,4 +77,9 @@ internal static class InstalledJarWriter
                    "Delete it manually once the server is stopped.";
         }
     }
+
+    private static bool IsPlainFileName(string fileName)
+        => !string.IsNullOrEmpty(fileName)
+           && fileName is not ("." or "..")
+           && fileName == Path.GetFileName(fileName);
 }

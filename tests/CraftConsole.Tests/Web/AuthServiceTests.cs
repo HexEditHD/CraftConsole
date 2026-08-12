@@ -272,6 +272,20 @@ public class AuthServiceTests : IDisposable
         Assert.NotNull(_auth.VerifyCredentials("admin", "a brand new password"));
     }
 
+    [Fact]
+    public async Task SetPasswordAsync_revokes_the_users_existing_sessions()
+    {
+        await _auth.InitializeAsync();
+        await _auth.SetupAdminAsync("correct horse battery staple");
+        var (_, op) = await _auth.CreateUserAsync("op", "op-password-123", Role.Operator);
+        var token = _auth.CreateSession(op!.Id);
+        Assert.NotNull(_auth.TryValidateSession(token));
+
+        await _auth.SetPasswordAsync(op.Id, "a brand new password");
+
+        Assert.Null(_auth.TryValidateSession(token));
+    }
+
     // ── Sessions ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -371,23 +385,56 @@ public class AuthServiceTests : IDisposable
     public void Lockout_engages_after_repeated_failures_and_does_not_block_other_ips()
     {
         const string ip = "203.0.113.5";
+        const string username = "irrelevant-for-this-test";
 
-        Assert.False(_auth.IsLockedOut(ip));
-        for (var i = 0; i < 5; i++) _auth.RegisterFailure(ip);
+        Assert.False(_auth.IsLockedOut(ip, username));
+        for (var i = 0; i < 5; i++) _auth.RegisterFailure(ip, username);
 
-        Assert.True(_auth.IsLockedOut(ip));
-        Assert.False(_auth.IsLockedOut("203.0.113.6"));
+        Assert.True(_auth.IsLockedOut(ip, username));
+        Assert.False(_auth.IsLockedOut("203.0.113.6", username));
     }
 
     [Fact]
     public void ClearFailures_lifts_the_counter_for_that_ip()
     {
         const string ip = "203.0.113.5";
-        for (var i = 0; i < 5; i++) _auth.RegisterFailure(ip);
-        Assert.True(_auth.IsLockedOut(ip));
+        const string username = "irrelevant-for-this-test";
+        for (var i = 0; i < 5; i++) _auth.RegisterFailure(ip, username);
+        Assert.True(_auth.IsLockedOut(ip, username));
 
-        _auth.ClearFailures(ip);
+        _auth.ClearFailures(ip, username);
 
-        Assert.False(_auth.IsLockedOut(ip));
+        Assert.False(_auth.IsLockedOut(ip, username));
+    }
+
+    [Fact]
+    public void Lockout_engages_against_one_username_regardless_of_source_ip()
+    {
+        const string username = "someone";
+        Assert.False(_auth.IsLockedOut("203.0.113.1", username));
+
+        for (var i = 0; i < 10; i++) _auth.RegisterFailure($"203.0.113.{i}", username); // a distinct IP each time
+
+        Assert.True(_auth.IsLockedOut("203.0.113.99", username));
+        Assert.False(_auth.IsLockedOut("203.0.113.99", "someone-else"));
+    }
+
+    [Fact]
+    public void Username_lockout_threshold_is_higher_than_the_per_ip_threshold()
+    {
+        const string username = "someone";
+        for (var i = 0; i < 5; i++) _auth.RegisterFailure($"203.0.113.{i}", username);
+        Assert.False(_auth.IsLockedOut("203.0.113.50", username)); // 5 distinct IPs, still under the username threshold of 10
+
+        for (var i = 5; i < 10; i++) _auth.RegisterFailure($"203.0.113.{i}", username);
+        Assert.True(_auth.IsLockedOut("203.0.113.50", username));
+    }
+
+    [Fact]
+    public void Username_lockout_is_case_insensitive()
+    {
+        for (var i = 0; i < 10; i++) _auth.RegisterFailure($"203.0.113.{i}", "Someone");
+
+        Assert.True(_auth.IsLockedOut("203.0.113.50", "SOMEONE"));
     }
 }
