@@ -12,7 +12,8 @@ public sealed record SessionInfo(Guid UserId, string Username, Role Role);
 /// <summary>
 /// Multi-user password auth: PBKDF2 hashes persisted to auth.json, server-held
 /// per-user session tokens (an app restart clears them — the browser just logs
-/// in again), and a per-IP lockout on repeated failed attempts.
+/// in again), and a lockout on repeated failed attempts keyed by both source IP
+/// and username.
 ///
 /// Migration: a pre-RBAC install has auth.json shaped as a single
 /// <c>{saltBase64, hashBase64, iterations}</c> record. On first load that legacy
@@ -30,7 +31,8 @@ public sealed class AuthService
     private const int PbkdfIterations = 210_000;
     private const string LegacyAdminUsername = "admin";
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromDays(30);
-    private const int MaxFailuresBeforeLockout = 5;
+    private const int MaxFailuresBeforeLockout = 5;              // per source IP
+    private const int MaxUsernameFailuresBeforeLockout = 10;      // per account — see IsLockedOut's doc comment
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(5);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -39,7 +41,22 @@ public sealed class AuthService
     private readonly JsonFileStore<AuthState> _store;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, Session> _sessions = new();
-    private readonly ConcurrentDictionary<string, FailureState> _failures = new();
+    private readonly ConcurrentDictionary<string, FailureState> _ipFailures = new();
+    // Case-insensitive to match VerifyCredentials' own username lookup — otherwise
+    // an attacker dodges the cap just by varying the username's case.
+    private readonly ConcurrentDictionary<string, FailureState> _usernameFailures = new(StringComparer.OrdinalIgnoreCase);
+
+    // A decoy verified on every "no such user"/"disabled user" miss so that response
+    // costs the same PBKDF2 verify as a real wrong-password attempt — otherwise the
+    // near-instant early return is a timing oracle for username enumeration, even
+    // though VerifyCredentials' caller returns an identical message either way. Salt
+    // and hash are just random bytes of the right length, not a real hash of
+    // anything; the result is always discarded, only the cost matters. Generated once
+    // per process rather than per call, so a miss pays only the PBKDF2 cost.
+    private readonly UserRecord _dummyUserForTiming = new(
+        Guid.Empty, "", Convert.ToBase64String(RandomNumberGenerator.GetBytes(SaltSize)),
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(KeySize)), PbkdfIterations,
+        Role.Operator, Enabled: false, DateTimeOffset.UtcNow);
 
     private List<UserRecord> _users = [];
 
@@ -151,7 +168,11 @@ public sealed class AuthService
     {
         var user = _users.FirstOrDefault(u =>
             string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase));
-        if (user is null || !user.Enabled) return null;
+        if (user is null || !user.Enabled)
+        {
+            VerifyPasswordHash(_dummyUserForTiming, password); // constant-cost decoy, result discarded
+            return null;
+        }
         return VerifyPasswordHash(user, password) ? user : null;
     }
 
@@ -259,6 +280,8 @@ public sealed class AuthService
             };
             _users = [.. _users.Select(u => u.Id == userId ? updated : u)];
             await SaveUsersAsync();
+            RevokeAllSessionsForUser(userId); // a changed password must invalidate any session an
+                                               // attacker already holds — see SetEnabledAsync/DeleteUserAsync
             return UserMutationResult.Success;
         }
         finally { _gate.Release(); }
@@ -320,25 +343,52 @@ public sealed class AuthService
     }
 
     // ── Lockout ──────────────────────────────────────────────────────────
+    // Two independent keys — source IP and username — so a distributed attacker
+    // (many source IPs) can't get a fresh 5-attempt budget per IP against one
+    // target account. Locked out if EITHER key has tripped. The username key uses
+    // a higher threshold than the IP key (10 vs. 5): usernames here are few and
+    // often guessable (the seed account is "admin"), making that key more
+    // self-DoS-able than an IP nobody but the operator knows, so it's set higher
+    // specifically to reduce accidental self-lockout from a handful of mistyped
+    // passwords.
+    //
+    // Username failures must be registered against the exact submitted username
+    // regardless of whether it resolves to a real, enabled user — otherwise
+    // whether a 429 shows up after N attempts would itself leak which usernames
+    // are real, undermining VerifyCredentials' own timing-oracle fix for the same
+    // class of enumeration.
 
-    public bool IsLockedOut(string ip)
-        => _failures.TryGetValue(ip, out var state) && state.LockedUntil > DateTimeOffset.UtcNow;
+    public bool IsLockedOut(string ip, string username)
+        => IsLockedOutCore(_ipFailures, ip) || IsLockedOutCore(_usernameFailures, username);
 
-    public void RegisterFailure(string ip)
+    public void RegisterFailure(string ip, string username)
     {
-        var state = _failures.GetOrAdd(ip, _ => new FailureState());
+        RegisterFailureCore(_ipFailures, ip, MaxFailuresBeforeLockout);
+        RegisterFailureCore(_usernameFailures, username, MaxUsernameFailuresBeforeLockout);
+    }
+
+    public void ClearFailures(string ip, string username)
+    {
+        _ipFailures.TryRemove(ip, out _);
+        _usernameFailures.TryRemove(username, out _);
+    }
+
+    private static bool IsLockedOutCore(ConcurrentDictionary<string, FailureState> failures, string key)
+        => failures.TryGetValue(key, out var state) && state.LockedUntil > DateTimeOffset.UtcNow;
+
+    private static void RegisterFailureCore(ConcurrentDictionary<string, FailureState> failures, string key, int threshold)
+    {
+        var state = failures.GetOrAdd(key, _ => new FailureState());
         lock (state)
         {
             state.Count++;
-            if (state.Count >= MaxFailuresBeforeLockout)
+            if (state.Count >= threshold)
             {
                 state.LockedUntil = DateTimeOffset.UtcNow.Add(LockoutDuration);
                 state.Count = 0;
             }
         }
     }
-
-    public void ClearFailures(string ip) => _failures.TryRemove(ip, out _);
 
     private sealed class FailureState
     {

@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using System.Net;
 using CraftConsole.Infrastructure.Http;
 using CraftConsole.Infrastructure.Logging;
 using CraftConsole.Web.Api;
 using CraftConsole.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -114,6 +116,29 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 });
 
 var app = builder.Build();
+
+// Must run before anything reads HttpContext.Connection.RemoteIpAddress or
+// HttpContext.Request.Scheme/IsHttps — the setup gate's loopback check, the
+// login lockout's IP key, and the session cookie's Secure flag (all in
+// AuthApi.cs) read those directly, and this rewrites them in place from
+// X-Forwarded-For/-Proto before anything downstream sees them. KnownNetworks/
+// KnownProxies are scoped to loopback only (127.0.0.0/8, ::1) — this only
+// takes effect for a reverse proxy on the same host as CraftConsole (the
+// deployment shape --http mode documents). A remote attacker's real TCP
+// source address can't be forged to look loopback, so this can't be used to
+// spoof these headers from off-box. Everywhere else (no proxy, or one on a
+// different host/container) the peer won't match and this is a no-op —
+// RemoteIpAddress/Scheme fall through unchanged to today's raw-socket values.
+var forwardedHeaderOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1, // exactly one hop of trust: browser -> same-host reverse proxy -> Kestrel
+};
+forwardedHeaderOptions.KnownNetworks.Clear();
+forwardedHeaderOptions.KnownProxies.Clear();
+forwardedHeaderOptions.KnownNetworks.Add(new Microsoft.AspNetCore.HttpOverrides.IPNetwork(IPAddress.Loopback, 8));
+forwardedHeaderOptions.KnownProxies.Add(IPAddress.IPv6Loopback);
+app.UseForwardedHeaders(forwardedHeaderOptions);
 
 await app.Services.GetRequiredService<AuthService>().InitializeAsync();
 

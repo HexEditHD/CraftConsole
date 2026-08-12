@@ -50,6 +50,17 @@ public class PathJailTests
     }
 
     [Fact]
+    public void Rejects_a_unc_path()
+    {
+        if (!OperatingSystem.IsWindows()) return; // UNC paths (\\server\share\...) are a Windows concept
+
+        // Path.IsPathRooted treats a UNC path as rooted, so — exactly like
+        // Rejects_an_absolute_path above — Path.Combine discards the root and the
+        // containment comparison is what actually rejects it.
+        Assert.Null(WorkspaceApi.ResolveJailedPath(Root, @"\\attacker-host\share\evil.txt"));
+    }
+
+    [Fact]
     public void Rejects_a_sibling_directory_that_merely_shares_a_prefix()
     {
         // "/srv/minecraft/survival-old" starts with the root string but is a
