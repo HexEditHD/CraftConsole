@@ -187,6 +187,8 @@ public static class PlayersApi
     {
         if (target is not null && string.IsNullOrWhiteSpace(target))
             return Results.BadRequest(new { Message = "A player name is required." });
+        if (target is not null && HasControlCharacters(target))
+            return Results.BadRequest(new { Message = "Player name contains invalid characters." });
 
         // Whitelist changes go through the server so it rewrites whitelist.json
         // and applies them live; editing the file directly would need a reload
@@ -210,6 +212,8 @@ public static class PlayersApi
     {
         if (string.IsNullOrWhiteSpace(target))
             return Results.BadRequest(new { Message = "Target is required." });
+        if (HasControlCharacters(target) || (reason is not null && HasControlCharacters(reason)))
+            return Results.BadRequest(new { Message = "Player name contains invalid characters." });
 
         var command = string.IsNullOrWhiteSpace(reason)
             ? $"{verb} {target}"
@@ -218,6 +222,12 @@ public static class PlayersApi
         await sup.SendCommandAsync(command);
         return Results.NoContent();
     }
+
+    // banned-players.json/whitelist.json round-trip through the underlying
+    // Minecraft server, not through this codebase — a name read back out of
+    // them is only as trustworthy as that file, never assume it is safe to
+    // fold into a command string.
+    private static bool HasControlCharacters(string value) => value.Any(char.IsControl);
 
     private static List<T> ReadServerJson<T>(ServerSupervisor sup, string fileName)
     {

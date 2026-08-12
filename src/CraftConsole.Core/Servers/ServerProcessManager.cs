@@ -167,7 +167,11 @@ public sealed class ServerProcessManager : IMinecraftServer
         {
             // HasExited is a point-in-time check — the process can still exit
             // between here and the write, so the write itself is guarded too.
-            if (process?.HasExited == false)
+            // A line break would write two lines to stdin — i.e. two console
+            // commands — from a single call; ServerSupervisor already rejects
+            // this, but this is the last stop before the pipe, for any caller
+            // that reaches here some other way.
+            if (process?.HasExited == false && !command.Contains('\n') && !command.Contains('\r'))
                 process.StandardInput.WriteLine(command);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)

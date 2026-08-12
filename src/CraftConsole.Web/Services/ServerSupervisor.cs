@@ -181,6 +181,17 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
         var cmd = command.Trim();
         if (cmd.Length == 0) return;
 
+        // A line break here would let one call write two lines to the child's
+        // stdin — i.e. two Minecraft console commands. Every caller is expected
+        // to send one command; reject rather than silently splitting or joining.
+        if (cmd.Contains('\n') || cmd.Contains('\r'))
+        {
+            AppendEntry(new ConsoleEntry(
+                DateTimeOffset.Now, Raw: "Command rejected: line breaks are not allowed.",
+                Message: "Command rejected: line breaks are not allowed.", Level: ConsoleEntryLevel.Error));
+            return;
+        }
+
         AppendEntry(new ConsoleEntry(
             DateTimeOffset.Now, Raw: $"> {cmd}", Message: $"> {cmd}", Level: ConsoleEntryLevel.Input));
 
@@ -411,6 +422,7 @@ public sealed partial class ServerSupervisor : IAsyncDisposable
                     else
                     {
                         _players.Add(joined.Player);
+                        if (_players.Count > 500) _players.RemoveAt(0);
                         geoTarget = joined.Player;
                     }
                 }
